@@ -1,0 +1,192 @@
+# Small Task Breakdown For AI Visual Learning Platform
+
+## Summary
+
+Build the platform in small, safe milestones instead of trying to create everything at once. The workspace is currently empty and not a Git repository, so the first task should create the project foundation, then each later task adds one production feature layer.
+
+## Task Order
+
+### Task 1: Project Foundation
+
+- Create monorepo structure with `apps/web`, `apps/api`, `packages/shared`, `infra`, and `docs`.
+- Initialize React + Vite + TailwindCSS + Framer Motion frontend.
+- Initialize FastAPI backend.
+- Add base README, environment examples, and local dev instructions.
+- Add Docker Compose skeleton for PostgreSQL, ChromaDB, Ollama, and optional SearxNG.
+
+Acceptance criteria:
+- Frontend starts locally.
+- Backend starts locally.
+- Health endpoint works.
+- Folder structure matches the planned architecture.
+
+### Task 2: Premium Chat UI Shell
+
+- Build matte-black app layout.
+- Add left sidebar with logo, chat search, history area, saved chats, Interactive Whiteboard, Physics Challenges, and Math Challenges.
+- Add center chat workspace.
+- Add floating ChatGPT-style input with attachment button, send button, auto-expanding textarea, and keyboard submit.
+- Add responsive sidebar behavior.
+- No emojis in UI.
+
+Acceptance criteria:
+- UI looks like a premium AI learning workspace, not a landing page.
+- Desktop/tablet layout is usable.
+- Sidebar and chat area have smooth transitions.
+
+### Task 3: Chat State And Conversation Persistence
+
+- Add backend conversation/message models.
+- Store conversations and messages in PostgreSQL.
+- Add APIs:
+  - `GET /api/conversations`
+  - `GET /api/conversations/{id}`
+  - `POST /api/chat/message`
+- Connect frontend sidebar history to saved conversations.
+- Allow reopening previous chats.
+
+Acceptance criteria:
+- A chat can be created, saved, listed, and reopened.
+- Sidebar history persists after refresh.
+
+### Task 4: Ollama AI Adapter
+
+- Add model-agnostic AI service interface.
+- Implement Ollama adapter first.
+- Add fallback mock response mode if Ollama is unavailable.
+- Support streaming response events.
+
+Acceptance criteria:
+- User can send a message and receive an AI response.
+- Backend does not directly couple route logic to Ollama.
+- Streaming or simulated streaming works in the chat UI.
+
+### Task 5: Embedded Visual Learning Blocks
+
+- Define structured visual command schema for:
+  - whiteboard drawings,
+  - graph visualizations,
+  - formulas,
+  - physics simulations.
+- Add frontend renderer for contextual visual blocks inside chat.
+- Add first demo blocks:
+  - sine wave graph,
+  - quadratic graph,
+  - projectile motion card,
+  - simple diagram/whiteboard block.
+
+Acceptance criteria:
+- Visual content appears inside the chat only when needed.
+- Blocks animate smoothly and do not break chat scrolling.
+- Rendering is deterministic from structured commands.
+
+### Task 6: RAG Document Ingestion
+
+- Add document upload endpoint.
+- Add PDF/text extraction using PyMuPDF first.
+- Add pdfplumber support for structured extraction.
+- Add OCR fallback plan using PaddleOCR for scanned PDFs.
+- Add semantic chunking around 300-800 words.
+- Preserve metadata: subject, class, chapter, topic, page, source file, content type.
+
+Acceptance criteria:
+- A PDF or text file can be uploaded and converted into chunks.
+- Chunks contain useful metadata.
+- Extraction failures return clear errors.
+
+### Task 7: Embeddings And ChromaDB Retrieval
+
+- Add local embedding service with `sentence-transformers`.
+- Default model: `all-MiniLM-L6-v2`.
+- Store chunks and embeddings in ChromaDB.
+- Add `POST /api/rag/query`.
+- Retrieve top relevant chunks with optional metadata filters.
+
+Acceptance criteria:
+- Uploaded content is searchable semantically.
+- RAG query returns relevant chunks and metadata.
+- Vector database code is isolated behind an adapter.
+
+### Task 8: RAG-Powered Tutor Answers
+
+- Combine retrieved chunks with the user question.
+- Send context to the Ollama adapter.
+- Generate source-aware answers.
+- Show citations/source references in the chat response.
+- Add optional internet-search flag for later SearxNG support.
+
+Acceptance criteria:
+- AI answers using uploaded educational materials.
+- Responses include source references when RAG context is used.
+- Normal chat still works without documents.
+
+### Task 9: Internet Search Support
+
+- Add SearxNG adapter.
+- Search web results only when enabled.
+- Extract useful page text.
+- Add web context into the same RAG answer flow.
+
+Acceptance criteria:
+- User can enable internet-assisted answer generation.
+- Web sources are clearly separated from uploaded document sources.
+
+### Task 10: Physics And Math Challenge Sections
+
+- Add dedicated Physics Challenges and Math Challenges views.
+- Build interactive simulations:
+  - projectile motion,
+  - velocity challenge,
+  - force/vector experiment,
+  - graph puzzle,
+  - equation-solving visual challenge.
+- Store basic progress events.
+
+Acceptance criteria:
+- Challenge sections match the same premium dark design.
+- Simulations are interactive and smooth.
+- Progress events can be saved.
+
+### Task 11: Exam Engine
+
+- Add timed exams, MCQs, and written questions.
+- Add topic and difficulty metadata.
+- Add adaptive scoring based on accuracy, time taken, and repeated mistakes.
+- Generate instant feedback.
+
+Acceptance criteria:
+- Student can take and submit an exam.
+- Backend stores results.
+- Difficulty can adjust based on performance.
+
+### Task 12: Analytics And Handwriting
+
+- Add analytics dashboard:
+  - weak topics,
+  - accuracy trends,
+  - time analysis,
+  - recommendations.
+- Add handwriting upload flow.
+- Use OCR to extract handwritten math/problem text.
+- Send extracted text into tutor/RAG solving flow.
+
+Acceptance criteria:
+- Student progress is visually trackable.
+- Handwritten uploads produce editable extracted text.
+- Extracted problems can be solved by the tutor.
+
+## Testing Plan
+
+- After each task, run frontend build and backend health checks.
+- Add API tests as backend routes are introduced.
+- Add UI smoke tests for layout, chat, visual blocks, and responsive behavior.
+- Add RAG tests for extraction, chunking, embeddings, retrieval, and source-aware answers.
+- Add simulation tests for deterministic math/physics behavior.
+
+## Assumptions
+
+- Implementation should start with Task 1 only.
+- Each task should be completed and verified before moving to the next.
+- The first usable demo target is Tasks 1-5.
+- RAG becomes the second major milestone through Tasks 6-8.
+- PostgreSQL, ChromaDB, Ollama, and SearxNG are local/self-hosted services.

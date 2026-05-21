@@ -1,0 +1,45 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: visual-learning-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: visual_learning
+      POSTGRES_USER: visual_learning
+      POSTGRES_PASSWORD: visual_learning
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  chromadb:
+    image: chromadb/chroma:latest
+    container_name: visual-learning-chromadb
+    restart: unless-stopped
+    ports:
+      - "8001:8000"
+    volumes:
+      - chroma_data:/chroma/chroma
+
+  ollama:
+    image: ollama/ollama:latest
+    container_name: visual-learning-ollama
+    restart: unless-stopped
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+
+  searxng:
+    image: searxng/searxng:latest
+    container_name: visual-learning-searxng
+    restart: unless-stopped
+    profiles:
+      - search
+    ports:
+      - "8080:8080"
+
+volumes:
+  postgres_data:
+  chroma_data:
+  ollama_data:

@@ -1,0 +1,307 @@
+# Updated Small Task Plan For AI Visual Learning Platform
+
+## Summary
+
+Build the platform one small task at a time, with the new premium learning intelligence features included from the beginning: learning modes, real pipeline indicators, source trust levels, conversation-scoped memory, contextual visualization triggers, progressive rendering, replayable explanations, and “Why?” expansion buttons.
+
+The first complete demo target is now: **premium chat workspace + local AI + contextual visual learning blocks + replay + learning modes + RAG-ready response structure**.
+
+## Task Order
+
+### Task 1: Project Foundation
+
+- Create monorepo structure with `apps/web`, `apps/api`, `packages/shared`, `infra`, and `docs`.
+- Initialize React + Vite + TailwindCSS + Framer Motion frontend.
+- Initialize FastAPI backend.
+- Add Docker Compose skeleton for PostgreSQL, ChromaDB, Ollama, and optional SearxNG.
+- Add shared TypeScript/Python-friendly documentation for core contracts: chat messages, visual blocks, source references, learning modes, and pipeline status events.
+
+Acceptance criteria:
+- Frontend starts locally.
+- Backend starts locally.
+- Health endpoint works.
+- Project structure is ready for incremental feature work.
+
+### Task 2: Premium Chat UI Shell
+
+- Build matte-black futuristic app layout.
+- Add ChatGPT-style left sidebar with logo, search chats, saved history, Interactive Whiteboard, Physics Challenges, and Math Challenges.
+- Add center conversation workspace with smooth scrolling.
+- Add floating input with attachment button, send button, auto-expanding textarea, keyboard submit, and focus animation.
+- Add learning mode selector near the input or chat header:
+  - Explain Simply
+  - Exam Mode
+  - Visual Mode
+  - Step-by-Step
+  - Fast Revision
+  - Challenge Me
+- No emojis anywhere in the UI.
+
+Acceptance criteria:
+- The app feels like a premium AI learning workspace, not a landing page.
+- Learning mode can be selected before sending a message.
+- Desktop/tablet layout is polished and responsive.
+
+### Task 3: Chat Persistence And Conversation Memory
+
+- Add PostgreSQL models for conversations, messages, attachments, selected learning mode, and generated visual blocks.
+- Add conversation-scoped memory fields:
+  - weak topics,
+  - preferred explanation style,
+  - recent mistakes,
+  - preferred visual depth.
+- Add APIs:
+  - `GET /api/conversations`
+  - `GET /api/conversations/{id}`
+  - `POST /api/chat/message`
+  - `PATCH /api/conversations/{id}/memory`
+- Sidebar history reads from saved conversations.
+
+Acceptance criteria:
+- Chats persist and reopen after refresh.
+- Memory is scoped only to the current conversation.
+- AI requests include conversation memory when available.
+
+### Task 4: AI Runtime And Streaming Pipeline
+
+- Add model-agnostic AI service interface.
+- Implement Ollama adapter first.
+- Add mock adapter fallback for development.
+- Add streaming response support.
+- Add real pipeline status events:
+  - searching textbook,
+  - retrieving notes,
+  - checking internet sources,
+  - generating answer,
+  - generating graph,
+  - loading simulation.
+- Render these as subtle “AI Thinking” indicators in the chat.
+
+Acceptance criteria:
+- Chat can stream a response.
+- Pipeline indicators reflect actual backend stages, not fake delays.
+- UI shows clear, subtle status like “Searching Physics Book...” or “Generating Visualization...”.
+
+### Task 5: Learning Modes And Prompt Policy
+
+- Make learning mode part of every AI request.
+- Adjust prompts and response structure by mode:
+  - Explain Simply: short, beginner-friendly.
+  - Exam Mode: board-exam focused, marks-oriented.
+  - Visual Mode: prefers visual blocks when useful.
+  - Step-by-Step: detailed derivation and reasoning.
+  - Fast Revision: compact summary and formulas.
+  - Challenge Me: asks questions and gives hints.
+- Store the selected mode per message.
+
+Acceptance criteria:
+- Same question produces noticeably different response style by mode.
+- Mode behavior is consistent across normal chat and RAG answers.
+
+### Task 6: Embedded Visual Blocks With Confidence Trigger
+
+- Define structured visual block schema for:
+  - whiteboard drawings,
+  - graphs,
+  - formulas,
+  - physics simulations,
+  - derivation animations.
+- Add visual confidence scoring:
+  - render visual block only when concept complexity and mode justify it.
+  - simple definitions should stay text-only.
+  - projectile motion, geometry proofs, vectors, graphs, and trig should trigger visuals.
+- Add frontend renderer for contextual visual blocks inside chat.
+
+Acceptance criteria:
+- Visuals appear only when educationally useful.
+- Chat remains clean for simple answers.
+- Visual rendering is deterministic from structured commands.
+
+### Task 7: Progressive Visual Rendering
+
+- Render visual blocks in staged sequence:
+  - explanation streams first,
+  - graph/diagram fades in,
+  - vectors or derivation animate,
+  - controls/sliders appear last.
+- Add animation states to visual block schema.
+- Use Framer Motion and Canvas/SVG rendering where appropriate.
+- Ensure visual blocks do not cause major layout shifts.
+
+Acceptance criteria:
+- Visuals feel smooth, intentional, and premium.
+- Simulations and graphs appear progressively instead of instantly dropping into chat.
+- Long conversations remain scrollable and stable.
+
+### Task 8: Replay Explanation
+
+- Add replay support to every visual block.
+- Store animation commands and timing metadata.
+- Add a clean `Replay` control on visual explanations.
+- Replay should:
+  - redraw derivations,
+  - reanimate graphs,
+  - replay vectors,
+  - reset and rerun simulations.
+
+Acceptance criteria:
+- User can replay a visual explanation without regenerating the answer.
+- Replay works after conversation reload.
+- Visual state resets cleanly before replay.
+
+### Task 9: “Why?” Expansion Buttons
+
+- Add expandable depth blocks inside AI responses.
+- AI response can mark certain claims, formulas, or laws as expandable.
+- Clicking `Why?` reveals:
+  - deeper explanation,
+  - derivation,
+  - supporting diagram,
+  - optional animation.
+- Keep the default chat response clean and compact.
+
+Acceptance criteria:
+- “Why?” expansion adds depth without cluttering the main answer.
+- Expanded content can include visual blocks.
+- Expanded state is preserved during the current conversation.
+
+### Task 10: RAG Document Ingestion
+
+- Add document upload endpoint.
+- Extract PDF text using PyMuPDF first.
+- Use pdfplumber for structured pages when helpful.
+- Add PaddleOCR fallback for scanned PDFs.
+- Chunk content into semantic 300-800 word chunks.
+- Preserve metadata: subject, class, chapter, topic, page, source file, and content type.
+
+Acceptance criteria:
+- PDF/text files can be uploaded and converted into searchable chunks.
+- Metadata is attached to every chunk.
+- Extraction errors are clear and recoverable.
+
+### Task 11: Embeddings, ChromaDB, And Source Trust
+
+- Add local embedding service using `sentence-transformers`.
+- Default model: `all-MiniLM-L6-v2`.
+- Store chunks in ChromaDB.
+- Add source trust levels:
+  - SSC textbook: High Trust
+  - Board question: High Trust
+  - Uploaded notes: Medium Trust
+  - Teacher material: Medium/High Trust based on metadata
+  - Internet: Variable Trust
+- Add `POST /api/rag/query` with metadata filters and trust scores.
+
+Acceptance criteria:
+- RAG retrieval returns relevant chunks with metadata and trust level.
+- Trust level is visible in source references.
+- Vector database logic is isolated behind an adapter.
+
+### Task 12: RAG-Powered Tutor Answers
+
+- Combine retrieved context, learning mode, conversation memory, and user question.
+- Send final prompt to Ollama.
+- Generate source-aware answers.
+- Show citations with source name, page/chapter when available, and trust level.
+- Prefer high-trust textbook sources over uploaded notes or internet when conflicts occur.
+
+Acceptance criteria:
+- AI answers from uploaded educational material.
+- Sources appear with trust labels.
+- RAG works with learning modes and visual confidence triggers.
+
+### Task 13: Internet Search Support
+
+- Add SearxNG adapter.
+- Search internet only when enabled.
+- Extract useful page text and pass it into the same RAG context flow.
+- Mark internet sources as Variable Trust.
+- Keep internet context visually separated from textbook/uploaded sources.
+
+Acceptance criteria:
+- User can enable internet-assisted answers.
+- Internet answers show source trust clearly.
+- Local document sources remain preferred when available.
+
+### Task 14: Physics And Math Challenge Sections
+
+- Add dedicated Physics Challenges and Math Challenges views.
+- Build interactive simulations:
+  - projectile motion,
+  - velocity challenge,
+  - force/vector experiment,
+  - graph puzzle,
+  - equation-solving visual challenge.
+- Reuse visual block rendering and replay systems.
+- Store progress events.
+
+Acceptance criteria:
+- Challenge sections match the premium dark design.
+- Simulations are smooth and interactive.
+- Progress can feed conversation memory and analytics later.
+
+### Task 15: Exam Engine
+
+- Add timed exams, MCQs, and written questions.
+- Add topic, difficulty, source, and trust metadata.
+- Add adaptive scoring based on accuracy, time taken, and repeated mistakes.
+- Support learning modes inside exam feedback, especially Exam Mode and Fast Revision.
+
+Acceptance criteria:
+- Student can take and submit an exam.
+- Backend stores results.
+- Feedback adapts to weak topics and exam mode.
+
+### Task 16: Analytics And Handwriting
+
+- Add analytics dashboard:
+  - weak topics,
+  - accuracy trends,
+  - time analysis,
+  - learning mode usage,
+  - recommendations.
+- Add handwriting upload flow.
+- Use OCR to extract handwritten math/problem text.
+- Send extracted text into tutor/RAG solving flow.
+
+Acceptance criteria:
+- Student progress is visually trackable.
+- Handwritten uploads produce editable extracted text.
+- Extracted problems can be solved by the tutor.
+
+## First Implementation Sequence
+
+Complete these first, one by one:
+
+1. Task 1: Project Foundation.
+2. Task 2: Premium Chat UI Shell.
+3. Task 3: Chat Persistence And Conversation Memory.
+4. Task 4: AI Runtime And Streaming Pipeline.
+5. Task 5: Learning Modes And Prompt Policy.
+6. Task 6: Embedded Visual Blocks With Confidence Trigger.
+7. Task 7: Progressive Visual Rendering.
+8. Task 8: Replay Explanation.
+9. Task 9: “Why?” Expansion Buttons.
+
+After these, the platform will already feel like a serious AI learning product before the full RAG pipeline lands.
+
+## Test Plan
+
+- Run frontend build and backend health checks after every task.
+- Add API tests for conversations, AI chat, memory, RAG, documents, and exams.
+- Add UI smoke tests for sidebar, chat input, learning modes, thinking indicators, visual blocks, replay, and “Why?” expansions.
+- Add RAG tests for extraction, chunking, embeddings, retrieval, trust levels, and citations.
+- Add deterministic tests for graph, whiteboard, and physics visual command rendering.
+- Add responsive checks for desktop, tablet, and mobile.
+
+## Assumptions
+
+- Implementation starts with Task 1 only.
+- Each task is completed and verified before moving to the next.
+- Backend remains FastAPI.
+- Frontend remains React + Vite + TailwindCSS + Framer Motion.
+- Ollama is the first LLM runtime.
+- ChromaDB is the first vector database.
+- SearxNG is the first internet search provider.
+- PaddleOCR is the first OCR fallback.
+- Conversation memory is scoped per conversation only, not global user memory.
