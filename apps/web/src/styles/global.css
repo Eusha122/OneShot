@@ -190,18 +190,30 @@ button:disabled {
 }
 
 .jxgbox {
-  background: #f8f8f8;
+  background: #ffffff;
   border: 0;
   overflow: hidden;
   position: relative;
 }
 
+.math-graph-board {
+  background: #ffffff;
+}
+
 .jxgbox svg {
   display: block;
+  shape-rendering: geometricPrecision;
 }
 
 .JXGtext {
-  color: #2f2f2f;
-  font-family: ui-sans-serif, system-ui, sans-serif;
-  font-size: 11px;
+  color: #333333;
+  font-family: "Inter", ui-sans-serif, system-ui, sans-serif;
+  font-size: 12px;
+  font-weight: 400;
+}
+
+.jxgbox text {
+  fill: #333333;
+  font-family: "Inter", ui-sans-serif, system-ui, sans-serif;
+  font-size: 12px;
 }

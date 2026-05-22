@@ -10,6 +10,27 @@ const defaultParams: SineGraphParams = {
 };
 
 const initialBounds = [-7, 4, 7, -4] as const;
+const axisStyle = {
+  strokeColor: "#444444",
+  strokeOpacity: 1,
+  strokeWidth: 1.8,
+};
+const tickStyle = {
+  drawLabels: true,
+  drawZero: false,
+  minorHeight: 0,
+  minorTicks: 0,
+  majorHeight: 6,
+  strokeColor: "#444444",
+  strokeOpacity: 1,
+  strokeWidth: 1,
+  ticksDistance: 1,
+  label: {
+    highlight: false,
+    strokeColor: "#333333",
+    fontSize: 12,
+  },
+};
 
 export function FunctionGraph({ initialParams = defaultParams }: { initialParams?: SineGraphParams }) {
   const rawBoardId = useId();
@@ -27,23 +48,44 @@ export function FunctionGraph({ initialParams = defaultParams }: { initialParams
       boundingbox: [...initialBounds],
       defaultAxes: {
         x: {
-          name: "x",
-          ticks: {
-            drawLabels: true,
-            minorTicks: 4,
-            ticksDistance: 1,
-          },
+          ...axisStyle,
+          name: "",
+          withLabel: false,
+          ticks: { ...tickStyle, drawZero: true },
         },
         y: {
-          name: "y",
-          ticks: {
-            drawLabels: true,
-            minorTicks: 4,
-            ticksDistance: 1,
-          },
+          ...axisStyle,
+          name: "",
+          withLabel: false,
+          ticks: tickStyle,
         },
       },
-      keepAspectRatio: false,
+      grid: {
+        majorStep: 1,
+        minorElements: 4,
+        strokeColor: "#d4d4d4",
+        strokeOpacity: 1,
+        strokeWidth: 0.6,
+        major: {
+          face: "line",
+          drawZero: false,
+          margin: 0,
+          size: 1,
+          strokeColor: "#c0c0c0",
+          strokeOpacity: 1,
+          strokeWidth: 1,
+        },
+        minor: {
+          face: "line",
+          drawZero: false,
+          margin: 0,
+          size: 1,
+          strokeColor: "#e5e5e5",
+          strokeOpacity: 1,
+          strokeWidth: 0.5,
+        },
+      } as unknown as boolean,
+      keepAspectRatio: true,
       pan: {
         enabled: true,
         needShift: false,
@@ -64,10 +106,23 @@ export function FunctionGraph({ initialParams = defaultParams }: { initialParams
       [(x: number) => evaluateSine(x, initialParamsRef.current)],
       {
         highlight: false,
-        strokeColor: "#f5f5f5",
-        strokeWidth: 2.5,
+        strokeColor: "#ff3b30",
+        strokeOpacity: 1,
+        strokeWidth: 3,
+        numberPointsHigh: 900,
+        numberPointsLow: 260,
       },
     ) as JXG.Curve;
+
+    board.create("point", [0, 0], {
+      fixed: true,
+      highlight: false,
+      name: "",
+      size: 2,
+      strokeColor: "#444444",
+      fillColor: "#444444",
+      withLabel: false,
+    });
 
     const resizeObserver = new ResizeObserver(() => {
       board.resizeContainer(board.containerObj.clientWidth, board.containerObj.clientHeight);
@@ -93,7 +148,7 @@ export function FunctionGraph({ initialParams = defaultParams }: { initialParams
   }, [params]);
 
   function resetView() {
-    boardRef.current?.setBoundingBox([...initialBounds], false);
+    boardRef.current?.setBoundingBox([...initialBounds], true);
     boardRef.current?.update();
   }
 
@@ -107,9 +162,9 @@ export function FunctionGraph({ initialParams = defaultParams }: { initialParams
 
   return (
     <div className="mt-3 rounded-lg bg-[#111111] p-3">
-      <div className="relative overflow-hidden rounded-md border border-[#1f1f1f] bg-[#f8f8f8]">
-        <div id={boardId} className="h-[320px] w-full touch-none sm:h-[380px]" />
-        <div className="absolute right-2 top-2 flex gap-1 rounded-md border border-black/10 bg-white/90 p-1 shadow-sm">
+      <div className="relative overflow-hidden rounded-lg border border-[#d0d0d0] bg-white shadow-sm">
+        <div id={boardId} className="math-graph-board h-[320px] w-full touch-none sm:h-[380px]" />
+        <div className="absolute right-2 top-2 flex gap-1 rounded-md border border-black/10 bg-white/90 p-1 shadow-sm backdrop-blur">
           <IconButton label="Zoom in" onClick={zoomIn}>
             <Plus size={15} />
           </IconButton>
@@ -175,7 +230,7 @@ function IconButton({
       aria-label={label}
       title={label}
       onClick={onClick}
-      className="grid h-8 w-8 place-items-center rounded text-[#222222] transition hover:bg-black/10"
+      className="grid h-8 w-8 place-items-center rounded text-[#555555] transition hover:bg-black/5"
     >
       {children}
     </button>
@@ -204,7 +259,7 @@ function Slider({
         <span>{value.toFixed(1)}</span>
       </span>
       <input
-        className="mt-2 w-full accent-[#f5f5f5]"
+        className="mt-2 w-full accent-[#ff3b30]"
         max={max}
         min={min}
         onChange={(event) => onChange(Number(event.target.value))}
