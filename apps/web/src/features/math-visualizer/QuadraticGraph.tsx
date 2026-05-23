@@ -102,7 +102,7 @@ export function QuadraticGraph({ initialParams = defaultParams }: { initialParam
           strokeWidth: 0.5,
         },
       } as unknown as boolean,
-      keepAspectRatio: true,
+      keepAspectRatio: false,
       pan: {
         enabled: true,
         needShift: false,
@@ -350,11 +350,24 @@ function Slider({
   value: number;
 }) {
   return (
-    <label className="block">
-      <span className="flex items-center justify-between text-xs text-[#9ca3af]">
+    <div className="block">
+      <div className="flex items-center justify-between text-xs text-[#9ca3af]">
         <span>{label}</span>
-        <span>{value.toFixed(1)}</span>
-      </span>
+        <input
+          type="number"
+          min={min}
+          max={max}
+          step={step}
+          value={Number(value.toFixed(2))}
+          onChange={(e) => {
+            const val = parseFloat(e.target.value);
+            if (!isNaN(val)) {
+              onChange(Math.max(min, Math.min(max, val)));
+            }
+          }}
+          className="w-16 rounded border border-[#333] bg-[#1a1a1a] px-1 py-0.5 text-right text-xs text-[#f5f5f5] focus:border-[#3b82f6] focus:outline-none"
+        />
+      </div>
       <input
         className="mt-2 w-full accent-[#3b82f6]"
         max={max}
@@ -364,7 +377,7 @@ function Slider({
         type="range"
         value={value}
       />
-    </label>
+    </div>
   );
 }
 
