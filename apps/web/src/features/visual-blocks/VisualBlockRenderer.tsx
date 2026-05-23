@@ -13,11 +13,27 @@ const ProjectileSimulation = lazy(() =>
   })),
 );
 
+const ForceMotionSimulation = lazy(() =>
+  import("../physics-sim/ForceMotionSimulation").then((module) => ({
+    default: module.ForceMotionSimulation,
+  })),
+);
+
+const QuadraticGraph = lazy(() =>
+  import("../math-visualizer/QuadraticGraph").then((module) => ({
+    default: module.QuadraticGraph,
+  })),
+);
+
 export function VisualBlockRenderer({ block }: { block: LearningVisualBlock }) {
   return (
     <Suspense fallback={<VisualBlockLoading />}>
       {block.type === "physics.projectile" ? (
         <ProjectileSimulation initialParams={block.params} />
+      ) : block.type === "physics.forceMotion" ? (
+        <ForceMotionSimulation initialParams={block.params} />
+      ) : block.type === "math.quadraticGraph" ? (
+        <QuadraticGraph initialParams={block.params} />
       ) : (
         <FunctionGraph initialParams={block.params} />
       )}
