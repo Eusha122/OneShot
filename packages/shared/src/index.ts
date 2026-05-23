@@ -48,6 +48,28 @@ export type VisualBlock =
       };
       confidence?: number;
       replayable?: boolean;
+    }
+  | {
+      id: string;
+      type: "physics.forceMotion";
+      params: {
+        mass: number;
+        force: number;
+        friction: number;
+      };
+      confidence?: number;
+      replayable?: boolean;
+    }
+  | {
+      id: string;
+      type: "math.quadraticGraph";
+      params: {
+        a: number;
+        b: number;
+        c: number;
+      };
+      confidence?: number;
+      replayable?: boolean;
     };
 
 export interface ChatMessage {

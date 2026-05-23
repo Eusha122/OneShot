@@ -68,8 +68,13 @@ function convertLatexDelimiters(content: string) {
 function normalizeFractionsInMath(content: string) {
   return content.replace(/(\$\$[\s\S]*?\$\$|\$[^$\n]+\$)/g, (mathSegment) =>
     mathSegment.replace(
-      /(?<!\\frac\{)(?<![\w}])([A-Za-z0-9]+)\s*\/\s*([A-Za-z0-9]+)(?![\w{])/g,
-      "\\frac{$1}{$2}",
+      /\\text\{(?:[^{}]|\{[^{}]*\})*\}|(?<!\\frac\{)(?<![\w}])([A-Za-z0-9]+)\s*\/\s*([A-Za-z0-9]+)(?![\w{])/g,
+      (match, p1, p2) => {
+        if (match.startsWith("\\text")) {
+          return match;
+        }
+        return `\\frac{${p1}}{${p2}}`;
+      },
     ),
   );
 }

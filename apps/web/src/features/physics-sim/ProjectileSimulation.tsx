@@ -132,13 +132,27 @@ function Slider({
   value: number;
 }) {
   return (
-    <label className="block">
-      <span className="flex items-center justify-between text-xs text-[#9ca3af]">
+    <div className="block">
+      <div className="flex items-center justify-between text-xs text-[#9ca3af]">
         <span>{label}</span>
-        <span>
-          {Number.isInteger(value) ? value : value.toFixed(1)} {unit}
-        </span>
-      </span>
+        <div className="flex items-center gap-1">
+          <input
+            type="number"
+            min={min}
+            max={max}
+            step={step}
+            value={Number(value.toFixed(2))}
+            onChange={(e) => {
+              const val = parseFloat(e.target.value);
+              if (!isNaN(val)) {
+                onChange(Math.max(min, Math.min(max, val)));
+              }
+            }}
+            className="w-14 rounded border border-[#333] bg-[#1a1a1a] px-1 py-0.5 text-right text-xs text-[#f5f5f5] focus:border-[#f5f5f5] focus:outline-none"
+          />
+          <span className="text-[10px] text-[#6b7280]">{unit}</span>
+        </div>
+      </div>
       <input
         className="mt-2 w-full accent-[#f5f5f5]"
         max={max}
@@ -148,7 +162,7 @@ function Slider({
         type="range"
         value={value}
       />
-    </label>
+    </div>
   );
 }
 
