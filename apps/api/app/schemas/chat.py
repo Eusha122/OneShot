@@ -26,8 +26,14 @@ class ChatRequest(BaseModel):
 
 class VisualBlock(BaseModel):
     id: str
-    type: Literal["physics.projectile", "math.sineGraph", "physics.forceMotion", "math.quadraticGraph"]
-    params: dict[str, float]
+    type: Literal[
+        "physics.projectile",
+        "math.sineGraph",
+        "physics.forceMotion",
+        "physics.engineLab",
+        "math.quadraticGraph",
+    ]
+    params: dict[str, float | str]
 
 
 class ChatResponse(BaseModel):

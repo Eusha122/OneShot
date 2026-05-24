@@ -48,7 +48,7 @@ export function ForceMotionSimulation({ initialParams = defaultParams }: { initi
     } else {
       setMessage("Friction overcome! The block will accelerate.");
     }
-  }, [params]);
+  }, [params, maxFrictionForce]);
 
   function stopAnimation() {
     if (animationRef.current !== null) {
@@ -318,6 +318,7 @@ export function ForceMotionSimulation({ initialParams = defaultParams }: { initi
           <button
             type="button"
             onClick={startAnimation}
+            disabled={isPlaying}
             className="inline-flex items-center gap-1.5 rounded bg-[#f5f5f5] px-2.5 py-1 text-[11px] font-semibold text-[#0a0a0a] transition hover:bg-white"
           >
             <Play size={11} fill="currentColor" />

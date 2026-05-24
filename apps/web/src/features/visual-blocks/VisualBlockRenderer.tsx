@@ -19,6 +19,12 @@ const ForceMotionSimulation = lazy(() =>
   })),
 );
 
+const PhysicsEngineLab = lazy(() =>
+  import("../physics-sim/PhysicsEngineLab").then((module) => ({
+    default: module.PhysicsEngineLab,
+  })),
+);
+
 const QuadraticGraph = lazy(() =>
   import("../math-visualizer/QuadraticGraph").then((module) => ({
     default: module.QuadraticGraph,
@@ -32,6 +38,8 @@ export function VisualBlockRenderer({ block }: { block: LearningVisualBlock }) {
         <ProjectileSimulation initialParams={block.params} />
       ) : block.type === "physics.forceMotion" ? (
         <ForceMotionSimulation initialParams={block.params} />
+      ) : block.type === "physics.engineLab" ? (
+        <PhysicsEngineLab initialParams={block.params} />
       ) : block.type === "math.quadraticGraph" ? (
         <QuadraticGraph initialParams={block.params} />
       ) : (

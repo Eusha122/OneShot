@@ -227,3 +227,16 @@ button:disabled {
   font-family: "Inter", ui-sans-serif, system-ui, sans-serif;
   font-size: 12px;
 }
+
+.physics-formula .katex-display {
+  margin: 0.25rem 0 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding-bottom: 0.1rem;
+  text-align: left;
+}
+
+.physics-formula .katex {
+  color: #f5f5f5;
+  font-size: 1.04rem;
+}

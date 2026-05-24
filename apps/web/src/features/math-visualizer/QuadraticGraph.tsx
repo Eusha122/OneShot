@@ -43,19 +43,11 @@ export function QuadraticGraph({ initialParams = defaultParams }: { initialParam
   const root2PointRef = useRef<JXG.Point | null>(null);
 
   const initialParamsRef = useRef(initialParams);
+  const initialFeaturesRef = useRef(calculateQuadraticFeatures(initialParams));
   const [params, setParams] = useState(initialParams);
 
   // Compute key points mathematically for overlay
-  const discriminant = params.b * params.b - 4 * params.a * params.c;
-  const vertexX = -params.b / (2 * params.a || 0.0001);
-  const vertexY = params.a * vertexX * vertexX + params.b * vertexX + params.c;
-
-  let root1: number | null = null;
-  let root2: number | null = null;
-  if (discriminant >= 0 && params.a !== 0) {
-    root1 = (-params.b - Math.sqrt(discriminant)) / (2 * params.a);
-    root2 = (-params.b + Math.sqrt(discriminant)) / (2 * params.a);
-  }
+  const { root1, root2, vertexX, vertexY } = calculateQuadraticFeatures(params);
 
   useEffect(() => {
     JXG.Options.text.useMathJax = false;
@@ -132,7 +124,7 @@ export function QuadraticGraph({ initialParams = defaultParams }: { initialParam
     ) as JXG.Curve;
 
     // Create Vertex Point (Red)
-    vertexPointRef.current = board.create("point", [vertexX, vertexY], {
+    vertexPointRef.current = board.create("point", [initialFeaturesRef.current.vertexX, initialFeaturesRef.current.vertexY], {
       name: "Vertex",
       fillColor: "#ef4444",
       strokeColor: "#ef4444",
@@ -146,13 +138,13 @@ export function QuadraticGraph({ initialParams = defaultParams }: { initialParam
     }) as JXG.Point;
 
     // Create Root 1 Point (Green)
-    root1PointRef.current = board.create("point", [root1 !== null ? root1 : 9999, 0], {
-      name: root1 !== null ? "Root 1" : "",
+    root1PointRef.current = board.create("point", [initialFeaturesRef.current.root1 !== null ? initialFeaturesRef.current.root1 : 9999, 0], {
+      name: initialFeaturesRef.current.root1 !== null ? "Root 1" : "",
       fillColor: "#10b981",
       strokeColor: "#10b981",
       size: 4,
       fixed: true,
-      visible: root1 !== null,
+      visible: initialFeaturesRef.current.root1 !== null,
       label: {
         offset: [-20, -12],
         color: "#10b981",
@@ -161,13 +153,13 @@ export function QuadraticGraph({ initialParams = defaultParams }: { initialParam
     }) as JXG.Point;
 
     // Create Root 2 Point (Green)
-    root2PointRef.current = board.create("point", [root2 !== null ? root2 : 9999, 0], {
-      name: root2 !== null ? "Root 2" : "",
+    root2PointRef.current = board.create("point", [initialFeaturesRef.current.root2 !== null ? initialFeaturesRef.current.root2 : 9999, 0], {
+      name: initialFeaturesRef.current.root2 !== null ? "Root 2" : "",
       fillColor: "#10b981",
       strokeColor: "#10b981",
       size: 4,
       fixed: true,
-      visible: root2 !== null,
+      visible: initialFeaturesRef.current.root2 !== null,
       label: {
         offset: [8, -12],
         color: "#10b981",
@@ -383,6 +375,28 @@ function Slider({
 
 function evaluateQuadratic(x: number, params: QuadraticParams) {
   return params.a * x * x + params.b * x + params.c;
+}
+
+function calculateQuadraticFeatures(params: QuadraticParams) {
+  const discriminant = params.b * params.b - 4 * params.a * params.c;
+  const vertexX = -params.b / (2 * params.a || 0.0001);
+  const vertexY = evaluateQuadratic(vertexX, params);
+
+  if (discriminant >= 0 && params.a !== 0) {
+    return {
+      root1: (-params.b - Math.sqrt(discriminant)) / (2 * params.a),
+      root2: (-params.b + Math.sqrt(discriminant)) / (2 * params.a),
+      vertexX,
+      vertexY,
+    };
+  }
+
+  return {
+    root1: null,
+    root2: null,
+    vertexX,
+    vertexY,
+  };
 }
 
 function formatQuadraticEquation(params: QuadraticParams) {

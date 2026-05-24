@@ -62,6 +62,34 @@ export type VisualBlock =
     }
   | {
       id: string;
+      type: "physics.engineLab";
+      params: {
+        scenario?: "projectile" | "force" | "energy" | "pressure" | "waves" | "electricity";
+        formulaId?: string;
+        mass?: number;
+        mass1?: number;
+        mass2?: number;
+        distance?: number;
+        force?: number;
+        friction?: number;
+        speed?: number;
+        angleDegrees?: number;
+        gravity?: number;
+        height?: number;
+        depth?: number;
+        density?: number;
+        area?: number;
+        frequency?: number;
+        wavelength?: number;
+        amplitude?: number;
+        voltage?: number;
+        resistance?: number;
+      };
+      confidence?: number;
+      replayable?: boolean;
+    }
+  | {
+      id: string;
       type: "math.quadraticGraph";
       params: {
         a: number;

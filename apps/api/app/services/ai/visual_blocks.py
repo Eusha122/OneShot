@@ -5,9 +5,52 @@ from app.schemas.chat import VisualBlock
 def infer_visual_blocks(message: str) -> list[VisualBlock]:
     normalized = message.lower()
     blocks: list[VisualBlock] = []
+    physics_lab_params = infer_physics_lab_params(normalized)
 
-    # 1. Force & Motion Detection
-    if any(keyword in normalized for keyword in ["force", "friction", "newton", "mass", "sliding", "acceleration", "f = ma", "f=ma"]):
+    if physics_lab_params is not None:
+        blocks.append(
+            VisualBlock(
+                id="visual-physics-engine-lab",
+                type="physics.engineLab",
+                params=physics_lab_params,
+            )
+        )
+        return blocks
+
+    # 1. Full SSC physics engine lab detection
+    if any(
+        keyword in normalized
+        for keyword in [
+            "physics engine",
+            "physics lab",
+            "ssc physics",
+            "interactive physics",
+            "all physics formulas",
+            "formula lab",
+        ]
+    ):
+        scenario = "projectile"
+        if any(keyword in normalized for keyword in ["ohm", "current", "electric", "voltage", "resistance"]):
+            scenario = "electricity"
+        elif any(keyword in normalized for keyword in ["wave", "sound", "frequency", "wavelength", "echo"]):
+            scenario = "waves"
+        elif any(keyword in normalized for keyword in ["pressure", "liquid", "density", "buoyancy"]):
+            scenario = "pressure"
+        elif any(keyword in normalized for keyword in ["energy", "work", "power", "kinetic", "potential"]):
+            scenario = "energy"
+        elif any(keyword in normalized for keyword in ["force", "friction", "newton", "acceleration"]):
+            scenario = "force"
+
+        blocks.append(
+            VisualBlock(
+                id="visual-physics-engine-lab",
+                type="physics.engineLab",
+                params={"scenario": scenario},
+            )
+        )
+
+    # 2. Force & Motion Detection
+    elif any(keyword in normalized for keyword in ["force", "friction", "newton", "mass", "sliding", "acceleration", "f = ma", "f=ma"]):
         mass = 10.0
         force = 50.0
         friction = 0.2
@@ -36,7 +79,7 @@ def infer_visual_blocks(message: str) -> list[VisualBlock]:
             )
         )
 
-    # 2. Projectile detection
+    # 3. Projectile detection
     elif any(keyword in normalized for keyword in ["projectile", "trajectory", "motion", "gravity", "thrown", "launched", "fired", "ball", "stone"]):
         speed = 32.0
         angle = 42.0
@@ -66,7 +109,7 @@ def infer_visual_blocks(message: str) -> list[VisualBlock]:
             )
         )
 
-    # 3. Quadratic graph detection
+    # 4. Quadratic graph detection
     elif any(keyword in normalized for keyword in ["quadratic", "parabola", "x^2", "x2", "vertex", "roots"]):
         a = 1.0
         b = 0.0
@@ -120,7 +163,7 @@ def infer_visual_blocks(message: str) -> list[VisualBlock]:
             )
         )
 
-    # 4. Sine graph detection
+    # 5. Sine graph detection
     elif any(keyword in normalized for keyword in ["sine", "sin(", "sin ", "wave"]):
         amplitude = 1.4
         frequency = 1.0
@@ -157,3 +200,124 @@ def infer_visual_blocks(message: str) -> list[VisualBlock]:
         )
 
     return blocks
+
+
+def infer_physics_lab_params(normalized: str) -> dict[str, float | str] | None:
+    formula_id = infer_formula_id(normalized)
+    if formula_id:
+        return {"scenario": scenario_for_formula(formula_id), "formulaId": formula_id}
+
+    if not any(
+        keyword in normalized
+        for keyword in [
+            "physics engine",
+            "physics lab",
+            "ssc physics",
+            "interactive physics",
+            "all physics formulas",
+            "formula lab",
+        ]
+    ):
+        return None
+
+    scenario = "projectile"
+    if any(keyword in normalized for keyword in ["ohm", "current", "electric", "voltage", "resistance"]):
+        scenario = "electricity"
+    elif any(keyword in normalized for keyword in ["wave", "sound", "frequency", "wavelength", "echo"]):
+        scenario = "waves"
+    elif any(keyword in normalized for keyword in ["pressure", "liquid", "density", "buoyancy"]):
+        scenario = "pressure"
+    elif any(keyword in normalized for keyword in ["energy", "work", "power", "kinetic", "potential"]):
+        scenario = "energy"
+    elif any(keyword in normalized for keyword in ["force", "friction", "newton", "acceleration"]):
+        scenario = "force"
+
+    return {"scenario": scenario}
+
+
+def infer_formula_id(normalized: str) -> str | None:
+    aliases: list[tuple[str, list[str]]] = [
+        (
+            "gravitational-force",
+            [
+                "gravitational force",
+                "law of gravitation",
+                "universal gravitation",
+                "gravity discovery",
+                "discovered gravity",
+                "apple fell",
+                "apple on head",
+                "white long hair",
+                "white haired physicist",
+                "newton gravity",
+                "inverse square",
+                "between two masses",
+                "m1m2",
+            ],
+        ),
+        (
+            "newton-second-law",
+            [
+                "newton's second law",
+                "newtons second law",
+                "second law of motion",
+                "f = ma",
+                "f=ma",
+                "force equals mass",
+                "mass times acceleration",
+                "force and acceleration",
+            ],
+        ),
+        ("momentum", ["momentum", "p = mv", "p=mv", "mass times velocity"]),
+        (
+            "motion-1",
+            [
+                "v = u + at",
+                "v=u+at",
+                "first equation of motion",
+                "final velocity",
+                "initial velocity plus acceleration",
+            ],
+        ),
+        (
+            "motion-3",
+            [
+                "s = ut",
+                "s=ut",
+                "half at square",
+                "half at squared",
+                "displacement with acceleration",
+                "third equation of motion",
+            ],
+        ),
+        ("kinetic-energy", ["kinetic energy", "energy of motion", "half mv square", "1/2 mv", "moving energy"]),
+        ("potential-energy", ["potential energy", "mgh", "stored energy", "height energy"]),
+        ("work", ["work formula", "work done", "force times displacement", "fs cos"]),
+        ("pressure", ["pressure formula", "force per area", "f/a", "f ÷ a"]),
+        ("liquid-pressure", ["liquid pressure", "water pressure", "h rho g", "depth pressure", "pressure in liquid"]),
+        ("wave-velocity", ["wave velocity", "wave speed", "v = f", "v=f", "frequency wavelength", "f lambda"]),
+        ("frequency-period", ["time period", "period and frequency", "f = 1/t", "f=1/t", "frequency period"]),
+        ("echo-distance", ["echo", "sound reflection", "distance to wall", "2d = vt", "2d=vt"]),
+        ("ohms-law", ["ohm", "ohm's law", "ohms law", "v = ir", "v=ir", "voltage current resistance"]),
+        ("electric-power", ["electric power", "electrical power", "p = vi", "p=vi", "v squared by r"]),
+    ]
+
+    for formula_id, keywords in aliases:
+        if any(keyword in normalized for keyword in keywords):
+            return formula_id
+
+    return None
+
+
+def scenario_for_formula(formula_id: str) -> str:
+    if formula_id in {"gravitational-force", "newton-second-law", "momentum"}:
+        return "force"
+    if formula_id in {"kinetic-energy", "potential-energy", "work"}:
+        return "energy"
+    if formula_id in {"pressure", "liquid-pressure"}:
+        return "pressure"
+    if formula_id in {"wave-velocity", "frequency-period", "echo-distance"}:
+        return "waves"
+    if formula_id in {"ohms-law", "electric-power"}:
+        return "electricity"
+    return "projectile"
