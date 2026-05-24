@@ -1,6 +1,6 @@
 import type { SimulationSchema } from "./SimulationSchema";
 
-export type PhysicsLabScenario = "projectile" | "force" | "energy" | "pressure" | "waves" | "electricity" | "generative" | "kinematics";
+export type PhysicsLabScenario = "projectile" | "force" | "energy" | "pressure" | "waves" | "optics" | "electricity" | "generative" | "kinematics";
 
 export interface PhysicsLabParams {
   scenario: PhysicsLabScenario;
@@ -33,6 +33,12 @@ export interface PhysicsLabParams {
   a: number;
   t: number;
   s: number;
+  charge: number;
+  current: number;
+  refractiveIndex: number;
+  refractiveIndex2: number;
+  focalLength: number;
+  lensDistance: number;
   schema?: SimulationSchema;
 }
 
@@ -77,6 +83,12 @@ export const defaultPhysicsLabParams: PhysicsLabParams = {
   a: 2,
   t: 5,
   s: 25,
+  charge: 1.6e-19,
+  current: 2,
+  refractiveIndex: 1,
+  refractiveIndex2: 1.5,
+  focalLength: 10,
+  lensDistance: 20,
 };
 
 export const motionFormulas: FormulaDefinition[] = [
@@ -281,11 +293,84 @@ export const lightFormulas: FormulaDefinition[] = [
     title: "Mirror or lens formula",
     expression: "1/v + 1/u = 1/f",
     latex: "\\frac{1}{v} + \\frac{1}{u} = \\frac{1}{f}",
-    variables: "u = object distance, v = image distance",
+    variables: "u = object distance, v = image distance, f = focal length",
+    scenario: "optics",
+  },
+  {
+    id: "focal-length",
+    chapter: "Reflection and Refraction of Light",
+    title: "Focal Length",
+    expression: "f = R / 2",
+    latex: "f = \\frac{R}{2}",
+    variables: "R = radius of curvature",
+    scenario: "optics",
+  },
+  {
+    id: "magnification",
+    chapter: "Reflection and Refraction of Light",
+    title: "Magnification",
+    expression: "m = -v/u = h_i/h_o",
+    latex: "m = -\\frac{v}{u} = \\frac{h_i}{h_o}",
+    variables: "v = image dist, u = object dist, h_i = image height",
+    scenario: "optics",
+  },
+  {
+    id: "refractive-index",
+    chapter: "Reflection and Refraction of Light",
+    title: "Refractive Index",
+    expression: "n = sin(i) / sin(r)",
+    latex: "n = \\frac{\\sin i}{\\sin r} = \\frac{c_{air}}{c_{medium}}",
+    variables: "i = angle of incidence, r = angle of refraction",
+    scenario: "optics",
+  },
+  {
+    id: "critical-angle",
+    chapter: "Reflection and Refraction of Light",
+    title: "Critical Angle",
+    expression: "sin(theta_c) = n_2 / n_1",
+    latex: "\\sin \\theta_c = \\frac{n_2}{n_1}",
+    variables: "n1, n2 = refractive indices",
+    scenario: "optics",
+  },
+  {
+    id: "lens-power",
+    chapter: "Reflection and Refraction of Light",
+    title: "Power of Lens",
+    expression: "P = 1 / f",
+    latex: "P = \\frac{1}{f}",
+    variables: "f = focal length (m), P = Power (Dioptre)",
+    scenario: "optics",
   },
 ];
 
 export const electricityFormulas: FormulaDefinition[] = [
+  {
+    id: "coulombs-law",
+    chapter: "Electricity",
+    title: "Coulomb's Law",
+    expression: "F = k q1 q2 / r^2",
+    latex: "F = k \\frac{q_1q_2}{r^2}",
+    variables: "q1, q2 = charges, r = distance, k = constant",
+    scenario: "electricity",
+  },
+  {
+    id: "electric-field",
+    chapter: "Electricity",
+    title: "Electric Field Strength",
+    expression: "E = F / q",
+    latex: "E = \\frac{F}{q}",
+    variables: "F = force, q = charge",
+    scenario: "electricity",
+  },
+  {
+    id: "electric-current",
+    chapter: "Electricity",
+    title: "Current",
+    expression: "I = Q / t",
+    latex: "I = \\frac{Q}{t}",
+    variables: "Q = charge, t = time",
+    scenario: "electricity",
+  },
   {
     id: "ohms-law",
     chapter: "Electricity",
@@ -293,6 +378,33 @@ export const electricityFormulas: FormulaDefinition[] = [
     expression: "V = IR",
     latex: "V = IR",
     variables: "V = voltage, I = current, R = resistance",
+    scenario: "electricity",
+  },
+  {
+    id: "wire-resistance",
+    chapter: "Electricity",
+    title: "Resistance of a Wire",
+    expression: "R = rho L / A",
+    latex: "R = \\rho \\frac{L}{A}",
+    variables: "rho = resistivity, L = length, A = area",
+    scenario: "electricity",
+  },
+  {
+    id: "series-resistance",
+    chapter: "Electricity",
+    title: "Series Resistance",
+    expression: "Rs = R1 + R2 + ...",
+    latex: "R_s = R_1 + R_2 + ...",
+    variables: "R1, R2 = resistances",
+    scenario: "electricity",
+  },
+  {
+    id: "parallel-resistance",
+    chapter: "Electricity",
+    title: "Parallel Resistance",
+    expression: "1/Rp = 1/R1 + 1/R2 + ...",
+    latex: "\\frac{1}{R_p} = \\frac{1}{R_1} + \\frac{1}{R_2} + ...",
+    variables: "R1, R2 = resistances",
     scenario: "electricity",
   },
   {

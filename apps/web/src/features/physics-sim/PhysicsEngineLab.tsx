@@ -1,9 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
 import katex from "katex";
-import { Activity, Atom, Droplets, Gauge, RotateCcw, Waves, Zap } from "lucide-react";
+import { Activity, Atom, Droplets, Eye, Gauge, RotateCcw, Waves, Zap } from "lucide-react";
 import { SimulationEngine } from "./SimulationEngine";
 import { KinematicsScene } from "./kinematics/scenes/KinematicsScene";
 import { ForceScene } from "./force/scenes/ForceScene";
+import { WaveScene } from "./waves/scenes/WaveScene";
+import { OpticsScene } from "./optics/scenes/OpticsScene";
+import { ElectricityScene } from "./electricity/scenes/ElectricityScene";
 import {
   calculateElectricity,
   calculateEnergy,
@@ -27,6 +30,7 @@ const scenarioOptions: { id: PhysicsLabScenario; label: string }[] = [
   { id: "energy", label: "Energy" },
   { id: "pressure", label: "Pressure" },
   { id: "waves", label: "Waves" },
+  { id: "optics", label: "Optics" },
   { id: "electricity", label: "Electricity" },
 ];
 
@@ -88,6 +92,60 @@ export function PhysicsEngineLab({ initialParams }: { initialParams?: Partial<Ph
         <KinematicsScene params={params} updateParam={updateParam} />
       ) : params.scenario === "force" ? (
         <ForceScene params={params} updateParam={updateParam} />
+      ) : params.scenario === "waves" ? (
+        <>
+          <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_280px]">
+            <WaveScene params={params} updateParam={updateParam} />
+            <aside className="rounded-md border border-[#1f1f1f] bg-[#0d0d0d] p-3">
+              <div className="flex items-center gap-2 text-xs font-medium text-[#f5f5f5]">
+                <ScenarioIcon scenario={params.scenario} />
+                <span>{isExactFormulaMode ? "Selected formula" : "Live formula model"}</span>
+              </div>
+              <div className="mt-3 space-y-2">
+                {activeFormulas.map((formula) => (
+                  <FormulaCard formula={formula} key={formula.id} />
+                ))}
+              </div>
+            </aside>
+          </div>
+          <Controls params={params} onChange={updateParam} />
+        </>
+      ) : params.scenario === "optics" ? (
+        <>
+          <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_280px]">
+            <OpticsScene params={params} updateParam={updateParam} />
+            <aside className="rounded-md border border-[#1f1f1f] bg-[#0d0d0d] p-3">
+              <div className="flex items-center gap-2 text-xs font-medium text-[#f5f5f5]">
+                <ScenarioIcon scenario={params.scenario} />
+                <span>{isExactFormulaMode ? "Selected formula" : "Live formula model"}</span>
+              </div>
+              <div className="mt-3 space-y-2">
+                {activeFormulas.map((formula) => (
+                  <FormulaCard formula={formula} key={formula.id} />
+                ))}
+              </div>
+            </aside>
+          </div>
+          <Controls params={params} onChange={updateParam} />
+        </>
+      ) : params.scenario === "electricity" ? (
+        <>
+          <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_280px]">
+            <ElectricityScene params={params} updateParam={updateParam} />
+            <aside className="rounded-md border border-[#1f1f1f] bg-[#0d0d0d] p-3">
+              <div className="flex items-center gap-2 text-xs font-medium text-[#f5f5f5]">
+                <ScenarioIcon scenario={params.scenario} />
+                <span>{isExactFormulaMode ? "Selected formula" : "Live formula model"}</span>
+              </div>
+              <div className="mt-3 space-y-2">
+                {activeFormulas.map((formula) => (
+                  <FormulaCard formula={formula} key={formula.id} />
+                ))}
+              </div>
+            </aside>
+          </div>
+          <Controls params={params} onChange={updateParam} />
+        </>
       ) : (
         <>
           <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_280px]">
@@ -128,12 +186,8 @@ export function PhysicsEngineLab({ initialParams }: { initialParams?: Partial<Ph
 }
 
 function PhysicsScene({ params, progress }: { params: PhysicsLabParams; progress: number }) {
-  if (params.formulaId === "frequency-period") return <PeriodScene params={params} progress={progress} />;
-  if (params.formulaId === "echo-distance") return <EchoScene params={params} progress={progress} />;
   if (params.scenario === "energy") return <EnergyScene params={params} progress={progress} />;
   if (params.scenario === "pressure") return <PressureScene params={params} />;
-  if (params.scenario === "waves") return <WaveScene params={params} progress={progress} />;
-  if (params.scenario === "electricity") return <ElectricityScene params={params} progress={progress} />;
   return <ProjectileScene params={params} progress={progress} />;
 }
 
@@ -218,109 +272,7 @@ function PressureScene({ params }: { params: PhysicsLabParams }) {
   );
 }
 
-function WaveScene({ params, progress }: { params: PhysicsLabParams; progress: number }) {
-  const metrics = calculateWave(params);
-  const phaseShift = progress * Math.PI * 2;
-  const points = Array.from({ length: 150 }, (_, index) => {
-    const x = 36 + (index / 149) * 568;
-    const normalizedX = index / 149;
-    const cycles = 7 / params.wavelength;
-    const y = 140 + Math.sin(normalizedX * Math.PI * 2 * cycles - phaseShift) * params.amplitude * 42;
-    return { x, y };
-  });
-  const path = toPath(points);
-  const particlePoints = Array.from({ length: 8 }, (_, index) => {
-    const x = 72 + index * 68;
-    const normalizedX = (x - 36) / 568;
-    const cycles = 7 / params.wavelength;
-    const y = 140 + Math.sin(normalizedX * Math.PI * 2 * cycles - phaseShift) * params.amplitude * 42;
-    return { x, y };
-  });
 
-  return (
-    <svg viewBox="0 0 640 280" className="h-[280px] w-full">
-      <WaveBackdrop />
-      <line x1="34" x2="606" y1="140" y2="140" stroke="rgba(255,255,255,0.18)" strokeDasharray="5 7" />
-      <path d={path} fill="none" stroke="#ff3b30" strokeLinecap="round" strokeWidth="3" />
-      {particlePoints.map((point, index) => (
-        <circle key={index} cx={point.x} cy={point.y} r="4.5" fill="#f5f5f5" opacity="0.92" />
-      ))}
-      <line x1="86" x2={86 + params.wavelength * 44} y1="228" y2="228" stroke="#60a5fa" strokeWidth="2" />
-      <line x1="86" x2="86" y1="222" y2="234" stroke="#60a5fa" strokeWidth="2" />
-      <line x1={86 + params.wavelength * 44} x2={86 + params.wavelength * 44} y1="222" y2="234" stroke="#60a5fa" strokeWidth="2" />
-      <text x="86" y="250" className="fill-[#9ca3af] text-[11px]">
-        wavelength = {params.wavelength.toFixed(1)} m, velocity = {metrics.velocity.toFixed(1)} m/s
-      </text>
-    </svg>
-  );
-}
-
-function PeriodScene({ params, progress }: { params: PhysicsLabParams; progress: number }) {
-  const metrics = calculateWave(params);
-  const angle = progress * Math.PI * 2;
-  const handX = 320 + Math.cos(angle - Math.PI / 2) * 74;
-  const handY = 140 + Math.sin(angle - Math.PI / 2) * 74;
-
-  return (
-    <svg viewBox="0 0 640 280" className="h-[280px] w-full">
-      <WaveBackdrop />
-      <circle cx="320" cy="140" r="86" fill="rgba(255,255,255,0.025)" stroke="rgba(255,255,255,0.22)" strokeWidth="2" />
-      <circle cx="320" cy="140" r="5" fill="#f5f5f5" />
-      <line x1="320" y1="140" x2={handX} y2={handY} stroke="#ff3b30" strokeLinecap="round" strokeWidth="4" />
-      <path d="M320 54 A86 86 0 1 1 319.9 54" fill="none" stroke="rgba(96,165,250,0.18)" strokeWidth="8" />
-      <text x="232" y="246" className="fill-[#9ca3af] text-[12px]">
-        One complete cycle takes T = {metrics.period.toFixed(2)} s
-      </text>
-    </svg>
-  );
-}
-
-function EchoScene({ params, progress }: { params: PhysicsLabParams; progress: number }) {
-  const metrics = calculateWave(params);
-  const wallX = 520;
-  const sourceX = 96;
-  const outbound = progress < 0.5;
-  const waveX = outbound
-    ? sourceX + (wallX - sourceX) * progress * 2
-    : wallX - (wallX - sourceX) * (progress - 0.5) * 2;
-
-  return (
-    <svg viewBox="0 0 640 280" className="h-[280px] w-full">
-      <WaveBackdrop />
-      <rect x={wallX} y="54" width="18" height="174" rx="3" fill="#2a2f38" stroke="rgba(255,255,255,0.22)" />
-      <circle cx={sourceX} cy="140" r="16" fill="#f5f5f5" />
-      <circle cx={waveX} cy="140" r="22" fill="none" stroke="#ff3b30" strokeWidth="3" opacity="0.95" />
-      <circle cx={waveX} cy="140" r="42" fill="none" stroke="rgba(255,59,48,0.3)" strokeWidth="2" />
-      <line x1={sourceX} y1="214" x2={wallX} y2="214" stroke="#60a5fa" strokeWidth="2" />
-      <text x="214" y="238" className="fill-[#9ca3af] text-[11px]">
-        echo distance example: {metrics.echoDistanceAfterTwoSeconds.toFixed(1)} m for 2 s round trip
-      </text>
-    </svg>
-  );
-}
-
-function ElectricityScene({ params, progress }: { params: PhysicsLabParams; progress: number }) {
-  const metrics = calculateElectricity(params);
-  const dotPositions = [0, 0.25, 0.5, 0.75].map((offset) => (progress + offset) % 1);
-
-  return (
-    <svg viewBox="0 0 640 280" className="h-[280px] w-full">
-      <CircuitBackdrop />
-      <path d="M130 78 H510 V214 H130 Z" fill="none" stroke="rgba(255,255,255,0.34)" strokeWidth="4" />
-      <line x1="130" x2="130" y1="116" y2="176" stroke="#f5f5f5" strokeWidth="5" />
-      <line x1="154" x2="154" y1="132" y2="160" stroke="#f5f5f5" strokeWidth="3" />
-      <rect x="452" y="120" width="64" height="52" rx="6" fill="#1f2937" stroke="#ff3b30" strokeWidth="2" />
-      <text x="464" y="150" className="fill-white text-[12px]">R</text>
-      {dotPositions.map((position, index) => {
-        const point = circuitPoint(position);
-        return <circle key={index} cx={point.x} cy={point.y} r="5" fill="#ff3b30" />;
-      })}
-      <text x="114" y="58" className="fill-[#9ca3af] text-[11px]">
-        V = IR, I = {metrics.current.toFixed(2)} A
-      </text>
-    </svg>
-  );
-}
 
 function Controls({
   params,
@@ -487,17 +439,52 @@ function controlsForFormula(scenario: PhysicsLabScenario, formulaId = "") {
     ];
   }
   if (scenario === "electricity") {
+    if (formulaId === "coulombs-law" || formulaId === "electric-field") {
+      return [
+        { key: "distance" as const, label: "Distance (r)", min: 0.1, max: 5, step: 0.1, unit: "m" },
+        { key: "voltage" as const, label: "Voltage", min: 1, max: 24, step: 1, unit: "V" },
+        { key: "resistance" as const, label: "Resistance", min: 1, max: 30, step: 1, unit: "Ω" },
+      ];
+    }
+    if (formulaId === "electric-current") {
+      return [
+        { key: "voltage" as const, label: "Voltage", min: 1, max: 24, step: 1, unit: "V" },
+        { key: "resistance" as const, label: "Resistance", min: 1, max: 30, step: 1, unit: "Ω" },
+        { key: "t" as const, label: "Time", min: 1, max: 20, step: 1, unit: "s" },
+      ];
+    }
     return [
       { key: "voltage" as const, label: "Voltage", min: 1, max: 24, step: 1, unit: "V" },
-      { key: "resistance" as const, label: "Resistance", min: 1, max: 30, step: 1, unit: "ohm" },
+      { key: "resistance" as const, label: "Resistance", min: 1, max: 30, step: 1, unit: "Ω" },
       { key: "mass" as const, label: "Animation load", min: 1, max: 20, step: 1, unit: "" },
     ];
   }
   if (scenario === "waves") {
+    if (formulaId === "echo-distance") {
+      return [
+        { key: "frequency" as const, label: "Frequency", min: 0.5, max: 12, step: 0.1, unit: "Hz" },
+        { key: "wavelength" as const, label: "Wavelength", min: 0.8, max: 6, step: 0.1, unit: "m" },
+        { key: "distance" as const, label: "Wall Distance", min: 5, max: 100, step: 1, unit: "m" },
+      ];
+    }
     return [
       { key: "frequency" as const, label: "Frequency", min: 0.5, max: 12, step: 0.1, unit: "Hz" },
       { key: "wavelength" as const, label: "Wavelength", min: 0.8, max: 6, step: 0.1, unit: "m" },
       { key: "amplitude" as const, label: "Amplitude", min: 0.3, max: 2, step: 0.1, unit: "m" },
+    ];
+  }
+  if (scenario === "optics") {
+    if (formulaId === "refractive-index" || formulaId === "critical-angle") {
+      return [
+        { key: "angleDegrees" as const, label: "Angle of Incidence", min: 0, max: 90, step: 1, unit: "°" },
+        { key: "refractiveIndex" as const, label: "n₁ (Medium 1)", min: 1, max: 2.5, step: 0.01, unit: "" },
+        { key: "refractiveIndex2" as const, label: "n₂ (Medium 2)", min: 1, max: 2.5, step: 0.01, unit: "" },
+      ];
+    }
+    return [
+      { key: "lensDistance" as const, label: "Object Distance (u)", min: 5, max: 40, step: 1, unit: "cm" },
+      { key: "focalLength" as const, label: "Focal Length (f)", min: 2, max: 20, step: 0.5, unit: "cm" },
+      { key: "radius" as const, label: "Radius of Curvature", min: 4, max: 40, step: 1, unit: "cm" },
     ];
   }
   return [
@@ -588,33 +575,7 @@ function FluidBackdrop() {
   );
 }
 
-function CircuitBackdrop() {
-  return (
-    <g>
-      <rect width="640" height="280" fill="#0d1117" />
-      <circle cx="512" cy="78" r="72" fill="rgba(255,59,48,0.035)" />
-      <circle cx="130" cy="214" r="88" fill="rgba(96,165,250,0.035)" />
-    </g>
-  );
-}
 
-function WaveBackdrop() {
-  return (
-    <g>
-      <rect width="640" height="280" fill="#0d1117" />
-      {Array.from({ length: 8 }, (_, index) => (
-        <path
-          key={index}
-          d={`M0 ${44 + index * 28} C80 ${28 + index * 28}, 160 ${60 + index * 28}, 240 ${44 + index * 28} S420 ${28 + index * 28}, 640 ${46 + index * 28}`}
-          fill="none"
-          stroke="rgba(96,165,250,0.055)"
-          strokeWidth="1"
-        />
-      ))}
-      <rect x="34" y="52" width="572" height="176" rx="8" fill="rgba(255,255,255,0.018)" stroke="rgba(255,255,255,0.08)" />
-    </g>
-  );
-}
 
 function SpaceBackdrop() {
   return (
@@ -656,6 +617,7 @@ function ScenarioIcon({ scenario }: { scenario: PhysicsLabScenario }) {
   if (scenario === "energy") return <Gauge size={14} />;
   if (scenario === "pressure") return <Droplets size={14} />;
   if (scenario === "waves") return <Waves size={14} />;
+  if (scenario === "optics") return <Eye size={14} />;
   if (scenario === "electricity") return <Zap size={14} />;
   return <Activity size={14} />;
 }
@@ -666,9 +628,4 @@ function toPath(points: { x: number; y: number }[]) {
   return rest.reduce((path, point) => `${path} L${point.x.toFixed(2)} ${point.y.toFixed(2)}`, `M${first.x.toFixed(2)} ${first.y.toFixed(2)}`);
 }
 
-function circuitPoint(progress: number) {
-  if (progress < 0.25) return { x: 130 + progress * 4 * 380, y: 78 };
-  if (progress < 0.5) return { x: 510, y: 78 + (progress - 0.25) * 4 * 136 };
-  if (progress < 0.75) return { x: 510 - (progress - 0.5) * 4 * 380, y: 214 };
-  return { x: 130, y: 214 - (progress - 0.75) * 4 * 136 };
-}
+

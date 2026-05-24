@@ -85,7 +85,7 @@ export function FunctionGraph({ initialParams = defaultParams }: { initialParams
           strokeWidth: 0.5,
         },
       } as unknown as boolean,
-      keepAspectRatio: false,
+      keepAspectRatio: true,
       pan: {
         enabled: true,
         needShift: false,

@@ -16,6 +16,7 @@ Step 1. Check if the formula matches one of these valid formulas:
 - energy: kinetic-energy, potential-energy, work
 - pressure: pressure, liquid-pressure
 - waves: wave-velocity, frequency-period, echo-distance
+- optics: lens-mirror, focal-length, magnification, refractive-index, critical-angle, lens-power
 - electricity: ohms-law, electric-power
 
 If it matches, return a JSON like:
@@ -280,7 +281,7 @@ def infer_physics_lab_params(normalized: str) -> dict[str, float | str] | None:
             llm_result["scenario"] = scenario_for_formula(formula_id)
             llm_result["formulaId"] = formula_id
 
-        valid_scenarios = {"projectile", "force", "energy", "pressure", "waves", "electricity", "generative", "kinematics"}
+        valid_scenarios = {"projectile", "force", "energy", "pressure", "waves", "optics", "electricity", "generative", "kinematics"}
         if llm_result["scenario"] in valid_scenarios:
             if formula_id and "formulaId" not in llm_result:
                 llm_result["formulaId"] = formula_id
@@ -316,6 +317,8 @@ def infer_physics_lab_params(normalized: str) -> dict[str, float | str] | None:
         scenario = "energy"
     elif any(keyword in normalized for keyword in ["force", "friction", "newton", "acceleration"]):
         scenario = "force"
+    elif any(keyword in normalized for keyword in ["optics", "lens", "mirror", "light", "refraction", "reflection"]):
+        scenario = "optics"
 
     return {"scenario": scenario}
 
@@ -457,10 +460,22 @@ def infer_formula_id(normalized: str) -> str | None:
         ("work", ["work formula", "work done", "force times displacement", "fs cos"]),
         ("pressure", ["pressure formula", "force per area", "f/a", "f ÷ a"]),
         ("liquid-pressure", ["liquid pressure", "water pressure", "h rho g", "depth pressure", "pressure in liquid"]),
-        ("wave-velocity", ["wave velocity", "wave speed", "v = f", "v=f", "frequency wavelength", "f lambda"]),
+        ("wave-velocity", ["wave velocity", "wave speed", "v = f", "v=f", "frequency wavelength", "f lambda", "wave speed formula"]),
         ("frequency-period", ["time period", "period and frequency", "f = 1/t", "f=1/t", "frequency period"]),
         ("echo-distance", ["echo", "sound reflection", "distance to wall", "2d = vt", "2d=vt"]),
+        ("lens-mirror", ["mirror formula", "lens formula", "lens equation", "1/v", "1/f", "image distance", "reflection", "mirror"]),
+        ("focal-length", ["focal length", "r/2", "radius of curvature"]),
+        ("magnification", ["magnification", "m = -v/u", "hi/ho", "h_i/h_o"]),
+        ("refractive-index", ["refractive index", "snells law", "snell's law", "sin i", "sin r", "refraction", "snell", "index of refraction"]),
+        ("critical-angle", ["critical angle", "sin theta c", "n2/n1", "total internal reflection", "tir"]),
+        ("lens-power", ["power of lens", "p = 1/f", "dioptre"]),
+        ("coulombs-law", ["coulombs law", "coulomb's law", "k q1 q2", "q1q2", "electric force", "coulomb law"]),
+        ("electric-field", ["electric field strength", "e = f/q", "f/q"]),
+        ("electric-current", ["electric current", "i = q/t", "q/t", "charge over time"]),
         ("ohms-law", ["ohm", "ohm's law", "ohms law", "v = ir", "v=ir", "voltage current resistance"]),
+        ("wire-resistance", ["resistance of a wire", "rho l/a", "resistivity", "resistance formula"]),
+        ("series-resistance", ["series resistance", "series resistor", "r1 + r2", "resistors in series"]),
+        ("parallel-resistance", ["parallel resistance", "parallel resistor", "1/r1 + 1/r2", "resistors in parallel"]),
         ("electric-power", ["electric power", "electrical power", "p = vi", "p=vi", "v squared by r"]),
     ]
 
@@ -482,6 +497,8 @@ def scenario_for_formula(formula_id: str) -> str:
         return "pressure"
     if formula_id in {"wave-velocity", "frequency-period", "echo-distance"}:
         return "waves"
-    if formula_id in {"ohms-law", "electric-power"}:
+    if formula_id in {"lens-mirror", "focal-length", "magnification", "refractive-index", "critical-angle", "lens-power"}:
+        return "optics"
+    if formula_id in {"coulombs-law", "electric-field", "electric-current", "ohms-law", "wire-resistance", "series-resistance", "parallel-resistance", "electric-power"}:
         return "electricity"
     return "projectile"

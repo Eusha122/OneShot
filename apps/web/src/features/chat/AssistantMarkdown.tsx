@@ -4,6 +4,9 @@ import rehypeKatex from "rehype-katex";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 
+const UNESCAPED_MATH_REGEX =
+  /(?<!\\)(\$\$[\s\S]*?(?<!\\)\$\$|(?<!\\)\$[^$\n]*?(?<!\\)\$)/g;
+
 export function AssistantMarkdown({ content, isStreaming = false }: { content: string; isStreaming?: boolean }) {
   const normalizedContent = normalizeMathMarkdown(content);
 
@@ -14,7 +17,10 @@ export function AssistantMarkdown({ content, isStreaming = false }: { content: s
         rehypePlugins={[[rehypeKatex, { throwOnError: false, strict: false }], rehypeHighlight]}
         components={{
           a: ({ children, ...props }) => (
-            <a {...props} className="text-[#f5f5f5] underline decoration-[#6b7280] underline-offset-4 hover:decoration-[#f5f5f5]">
+            <a
+              {...props}
+              className="text-[#f5f5f5] underline decoration-[#6b7280] underline-offset-4 hover:decoration-[#f5f5f5]"
+            >
               {children}
             </a>
           ),
@@ -22,7 +28,10 @@ export function AssistantMarkdown({ content, isStreaming = false }: { content: s
             const isBlock = className?.includes("language-");
             if (isBlock) {
               return (
-                <code {...props} className={`${className ?? ""} block overflow-x-auto whitespace-pre rounded-md bg-[#0a0a0a] p-4 text-[13px] leading-6 text-[#e5e7eb]`}>
+                <code
+                  {...props}
+                  className={`${className ?? ""} block overflow-x-auto whitespace-pre rounded-md bg-[#0a0a0a] p-4 text-[13px] leading-6 text-[#e5e7eb]`}
+                >
                   {children}
                 </code>
               );
@@ -75,6 +84,9 @@ function normalizeMathMarkdown(content: string): string {
   // Step 6: Convert bare fractions inside math to \frac{}{}
   text = normalizeFractionsInMath(text);
 
+  // Step 6.5: Fix common KaTeX syntax errors (e.g. ^\circ and _o' / _o'')
+  text = fixKatexSyntaxErrors(text);
+
   // Step 7: Restore code blocks
   codeBlocks.forEach((block, i) => {
     text = text.replace(`__CB${i}__`, block);
@@ -89,11 +101,19 @@ function normalizeMathMarkdown(content: string): string {
 // ─── STEP 2: CONVERT LATEX DELIMITERS ────────────────────────────
 
 function convertLatexDelimiters(content: string): string {
-  return content
+  let text = content
     // \[...\]  → display math with guaranteed blank-line padding
     .replace(/\\\[((?:.|\n)*?)\\\]/g, (_, eq: string) => `\n\n$$\n${eq.trim()}\n$$\n\n`)
     // \(...\)  → inline math
     .replace(/\\\(((?:.|\n)*?)\\\)/g, (_, eq: string) => `$${eq.trim()}$`);
+
+  // Convert Qwen's single-$ display math blocks to $$
+  // Matches a $ at the start of a line, containing anything, ending with a $ at the end of a line or by itself.
+  text = text.replace(/(?:^|\r?\n)[ \t]*\$(?!\d)([\s\S]+?)\$[ \t\r]*(?=\r?\n|$)/g, (match, inner) => {
+    return `\n\n$$\n${inner.trim()}\n$$\n\n`;
+  });
+
+  return text;
 }
 
 // ─── STEP 3: ISOLATE DISPLAY MATH ────────────────────────────────
@@ -158,7 +178,7 @@ function forceStructuralSpacing(content: string): string {
 
 // ─── STEP 5: BALANCE INLINE MATH ────────────────────────────────
 // If a paragraph has an ODD number of un-escaped $ signs, the
-// remainder of the text gets swallowed as math.  Escape them all
+// remainder of the text gets swallowed as math. Escape them all
 // in that paragraph so they render as literal $ characters.
 
 function balanceInlineMath(content: string): string {
@@ -180,7 +200,7 @@ function balanceInlineMath(content: string): string {
 // ─── STEP 6: NORMALISE FRACTIONS IN MATH ────────────────────────
 
 function normalizeFractionsInMath(content: string): string {
-  return content.replace(/(\$\$[\s\S]*?\$\$|\$[^$\n]+\$)/g, (mathSegment) =>
+  return content.replace(UNESCAPED_MATH_REGEX, (mathSegment) =>
     mathSegment.replace(
       /\\text\{(?:[^{}]|\{[^{}]*\})*\}|(?<!\\frac\{)(?<![\w}])([A-Za-z0-9]+)\s*\/\s*([A-Za-z0-9]+)(?![\w{])/g,
       (match, p1, p2) => {
@@ -189,4 +209,28 @@ function normalizeFractionsInMath(content: string): string {
       },
     ),
   );
+}
+
+// ─── STEP 6.5: FIX KATEX SYNTAX ERRORS ─────────────────────────
+// Fixes ^\circ (needs braces) and _x' / _x'' / _{xx}' etc.
+
+function convertPrimes(primeMarks: string): string {
+  return `^{${Array(primeMarks.length).fill("\\prime").join("")}}`;
+}
+
+function fixKatexSyntaxErrors(content: string): string {
+  return content.replace(UNESCAPED_MATH_REGEX, (mathSegment) => {
+    let fixed = mathSegment;
+
+    // Fix ^\circ -> ^{\circ}
+    fixed = fixed.replace(/\^\\circ/g, "^{\\circ}");
+
+    // Fix _x', _x'', _x'''
+    // Fix _{xx}', _{xx}'', _{xx}'''
+    fixed = fixed.replace(/_(\{[^}]+\}|[a-zA-Z0-9]+)('+)/g, (_, base, primes) => {
+      return `_${base}${convertPrimes(primes)}`;
+    });
+
+    return fixed;
+  });
 }
