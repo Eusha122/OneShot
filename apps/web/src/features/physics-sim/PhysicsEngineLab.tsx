@@ -1,6 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import katex from "katex";
 import { Activity, Atom, Droplets, Gauge, RotateCcw, Waves, Zap } from "lucide-react";
+import { SimulationEngine } from "./SimulationEngine";
+import { KinematicsScene } from "./kinematics/scenes/KinematicsScene";
+import { ForceScene } from "./force/scenes/ForceScene";
 import {
   calculateElectricity,
   calculateEnergy,
@@ -19,6 +22,7 @@ import {
 
 const scenarioOptions: { id: PhysicsLabScenario; label: string }[] = [
   { id: "projectile", label: "Projectile" },
+  { id: "kinematics", label: "Kinematics" },
   { id: "force", label: "Force" },
   { id: "energy", label: "Energy" },
   { id: "pressure", label: "Pressure" },
@@ -51,6 +55,10 @@ export function PhysicsEngineLab({ initialParams }: { initialParams?: Partial<Ph
     return () => cancelAnimationFrame(frameId);
   }, [params]);
 
+  if (params.scenario === "generative" && params.schema) {
+    return <SimulationEngine schema={params.schema} />;
+  }
+
   function updateParam<Key extends keyof PhysicsLabParams>(key: Key, value: PhysicsLabParams[Key]) {
     setParams((current) => ({ ...current, [key]: value }));
   }
@@ -76,47 +84,52 @@ export function PhysicsEngineLab({ initialParams }: { initialParams?: Partial<Ph
         </div>
       ) : null}
 
-      <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_280px]">
-        <div className="overflow-hidden rounded-md border border-[#20242b] bg-[#0d1117]">
-          <PhysicsScene params={params} progress={progress} />
-        </div>
+      {params.scenario === "kinematics" ? (
+        <KinematicsScene params={params} updateParam={updateParam} />
+      ) : params.scenario === "force" ? (
+        <ForceScene params={params} updateParam={updateParam} />
+      ) : (
+        <>
+          <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_280px]">
+            <div className="overflow-hidden rounded-md border border-[#20242b] bg-[#0d1117]">
+              <PhysicsScene params={params} progress={progress} />
+            </div>
 
-        <aside className="rounded-md border border-[#1f1f1f] bg-[#0d0d0d] p-3">
-          <div className="flex items-center gap-2 text-xs font-medium text-[#f5f5f5]">
-            <ScenarioIcon scenario={params.scenario} />
-            <span>{isExactFormulaMode ? "Selected formula" : "Live formula model"}</span>
+            <aside className="rounded-md border border-[#1f1f1f] bg-[#0d0d0d] p-3">
+              <div className="flex items-center gap-2 text-xs font-medium text-[#f5f5f5]">
+                <ScenarioIcon scenario={params.scenario} />
+                <span>{isExactFormulaMode ? "Selected formula" : "Live formula model"}</span>
+              </div>
+              <div className="mt-3 space-y-2">
+                {activeFormulas.map((formula) => (
+                  <FormulaCard formula={formula} key={formula.id} />
+                ))}
+              </div>
+            </aside>
           </div>
-          <div className="mt-3 space-y-2">
-            {activeFormulas.map((formula) => (
-              <FormulaCard formula={formula} key={formula.id} />
-            ))}
+
+          <Controls params={params} onChange={updateParam} />
+
+          <div className="mt-3 flex flex-wrap items-center justify-between gap-3 text-xs text-[#9ca3af]">
+            <Metrics params={params} />
+            <button
+              type="button"
+              onClick={() => setProgress(0)}
+              className="inline-flex items-center gap-1.5 text-[#9ca3af] transition hover:text-[#f5f5f5]"
+            >
+              <RotateCcw size={13} />
+              Replay
+            </button>
           </div>
-        </aside>
-      </div>
-
-      <Controls params={params} onChange={updateParam} />
-
-      <div className="mt-3 flex flex-wrap items-center justify-between gap-3 text-xs text-[#9ca3af]">
-        <Metrics params={params} />
-        <button
-          type="button"
-          onClick={() => setProgress(0)}
-          className="inline-flex items-center gap-1.5 text-[#9ca3af] transition hover:text-[#f5f5f5]"
-        >
-          <RotateCcw size={13} />
-          Replay
-        </button>
-      </div>
+        </>
+      )}
     </div>
   );
 }
 
 function PhysicsScene({ params, progress }: { params: PhysicsLabParams; progress: number }) {
-  if (params.formulaId === "gravitational-force") return <GravityScene params={params} />;
-  if (params.formulaId === "momentum") return <MomentumScene params={params} progress={progress} />;
   if (params.formulaId === "frequency-period") return <PeriodScene params={params} progress={progress} />;
   if (params.formulaId === "echo-distance") return <EchoScene params={params} progress={progress} />;
-  if (params.scenario === "force") return <ForceScene params={params} progress={progress} />;
   if (params.scenario === "energy") return <EnergyScene params={params} progress={progress} />;
   if (params.scenario === "pressure") return <PressureScene params={params} />;
   if (params.scenario === "waves") return <WaveScene params={params} progress={progress} />;
@@ -160,74 +173,7 @@ function ProjectileScene({ params, progress }: { params: PhysicsLabParams; progr
   );
 }
 
-function ForceScene({ params, progress }: { params: PhysicsLabParams; progress: number }) {
-  const metrics = calculateForceMotion(params);
-  const blockX = 54 + Math.min(420, metrics.displacementAfter3s * 38 * progress);
-  const forceLength = Math.min(130, params.force * 1.8);
-  const frictionLength = Math.min(120, metrics.frictionForce * 1.5);
 
-  return (
-    <svg viewBox="0 0 640 280" className="h-[280px] w-full">
-      <LabFloor />
-      <line x1="28" x2="612" y1="214" y2="214" stroke="rgba(255,255,255,0.34)" strokeWidth="2" />
-      <line x1="28" x2="612" y1="218" y2="218" stroke="rgba(255,59,48,0.28)" strokeDasharray="5 7" strokeWidth="2" />
-      <rect x={blockX} y="148" width="92" height="66" rx="6" fill="#1f2937" stroke="#4b5563" strokeWidth="2" />
-      <text x={blockX + 46} y="187" textAnchor="middle" className="fill-white text-[13px] font-semibold">
-        {params.mass.toFixed(0)} kg
-      </text>
-      <Arrow x1={blockX + 92} y1={181} x2={blockX + 92 + forceLength} y2={181} color="#60a5fa" label={`F = ${params.force.toFixed(0)} N`} />
-      <Arrow x1={blockX} y1={198} x2={blockX - frictionLength} y2={198} color="#ff3b30" label={`fr = ${metrics.frictionForce.toFixed(1)} N`} />
-      <Arrow x1={blockX + 46} y1={148} x2={blockX + 46} y2={100} color="#22c55e" label="N" />
-      <Arrow x1={blockX + 46} y1={214} x2={blockX + 46} y2={256} color="#f59e0b" label="mg" />
-    </svg>
-  );
-}
-
-function MomentumScene({ params, progress }: { params: PhysicsLabParams; progress: number }) {
-  const x = 64 + progress * 430;
-  const velocity = Math.max(1, params.speed / 8);
-  const momentum = params.mass * velocity;
-
-  return (
-    <svg viewBox="0 0 640 280" className="h-[280px] w-full">
-      <LabFloor />
-      <line x1="36" x2="604" y1="214" y2="214" stroke="rgba(255,255,255,0.34)" strokeWidth="2" />
-      <rect x={x} y="158" width="94" height="56" rx="8" fill="#1f2937" stroke="#4b5563" strokeWidth="2" />
-      <circle cx={x + 22} cy="224" r="8" fill="#0d1117" stroke="#9ca3af" strokeWidth="2" />
-      <circle cx={x + 72} cy="224" r="8" fill="#0d1117" stroke="#9ca3af" strokeWidth="2" />
-      <Arrow x1={x + 94} y1={186} x2={x + 190} y2={186} color="#ff3b30" label={`p = ${momentum.toFixed(1)}`} />
-      <text x="42" y="42" className="fill-[#9ca3af] text-[11px]">
-        Momentum increases with mass and velocity
-      </text>
-    </svg>
-  );
-}
-
-function GravityScene({ params }: { params: PhysicsLabParams }) {
-  const metrics = calculateGravitationalForce(params);
-  const leftRadius = Math.min(34, 12 + params.mass1 * 1.8);
-  const rightRadius = Math.min(40, 12 + params.mass2 * 1.8);
-  const distancePx = Math.min(360, 80 + params.distance * 40);
-  const leftX = 320 - distancePx / 2;
-  const rightX = 320 + distancePx / 2;
-
-  return (
-    <svg viewBox="0 0 640 280" className="h-[280px] w-full">
-      <SpaceBackdrop />
-      <line x1={leftX} x2={rightX} y1="140" y2="140" stroke="rgba(255,255,255,0.16)" strokeDasharray="5 7" />
-      <circle cx={leftX} cy="140" r={leftRadius} fill="#9ca3af" />
-      <circle cx={rightX} cy="140" r={rightRadius} fill="#f5f5f5" />
-      <Arrow x1={leftX + leftRadius + 8} y1={140} x2={leftX + 92} y2={140} color="#ff3b30" label="attraction" />
-      <Arrow x1={rightX - rightRadius - 8} y1={140} x2={rightX - 92} y2={140} color="#ff3b30" label="" />
-      <text x="42" y="42" className="fill-[#9ca3af] text-[11px]">
-        Gravitational force weakens as distance squared increases
-      </text>
-      <text x="42" y="62" className="fill-[#8b949e] text-[11px]">
-        F = {metrics.force.toExponential(2)} N using G = {metrics.gravitationalConstant.toExponential(2)}
-      </text>
-    </svg>
-  );
-}
 
 function EnergyScene({ params, progress }: { params: PhysicsLabParams; progress: number }) {
   const metrics = calculateEnergy(params);

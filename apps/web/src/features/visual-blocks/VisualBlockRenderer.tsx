@@ -13,12 +13,6 @@ const ProjectileSimulation = lazy(() =>
   })),
 );
 
-const ForceMotionSimulation = lazy(() =>
-  import("../physics-sim/ForceMotionSimulation").then((module) => ({
-    default: module.ForceMotionSimulation,
-  })),
-);
-
 const PhysicsEngineLab = lazy(() =>
   import("../physics-sim/PhysicsEngineLab").then((module) => ({
     default: module.PhysicsEngineLab,
@@ -36,8 +30,6 @@ export function VisualBlockRenderer({ block }: { block: LearningVisualBlock }) {
     <Suspense fallback={<VisualBlockLoading />}>
       {block.type === "physics.projectile" ? (
         <ProjectileSimulation initialParams={block.params} />
-      ) : block.type === "physics.forceMotion" ? (
-        <ForceMotionSimulation initialParams={block.params} />
       ) : block.type === "physics.engineLab" ? (
         <PhysicsEngineLab initialParams={block.params} />
       ) : block.type === "math.quadraticGraph" ? (

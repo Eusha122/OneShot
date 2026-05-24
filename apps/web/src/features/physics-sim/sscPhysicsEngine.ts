@@ -1,4 +1,6 @@
-export type PhysicsLabScenario = "projectile" | "force" | "energy" | "pressure" | "waves" | "electricity";
+import type { SimulationSchema } from "./SimulationSchema";
+
+export type PhysicsLabScenario = "projectile" | "force" | "energy" | "pressure" | "waves" | "electricity" | "generative" | "kinematics";
 
 export interface PhysicsLabParams {
   scenario: PhysicsLabScenario;
@@ -21,6 +23,17 @@ export interface PhysicsLabParams {
   amplitude: number;
   voltage: number;
   resistance: number;
+  u: number;
+  v: number;
+  u1: number;
+  u2: number;
+  v1: number;
+  v2: number;
+  radius: number;
+  a: number;
+  t: number;
+  s: number;
+  schema?: SimulationSchema;
 }
 
 export interface FormulaDefinition {
@@ -54,6 +67,16 @@ export const defaultPhysicsLabParams: PhysicsLabParams = {
   amplitude: 1,
   voltage: 12,
   resistance: 6,
+  u: 0,
+  v: 10,
+  u1: 5,
+  u2: 0,
+  v1: 2,
+  v2: 3,
+  radius: 10,
+  a: 2,
+  t: 5,
+  s: 25,
 };
 
 export const motionFormulas: FormulaDefinition[] = [
@@ -64,6 +87,7 @@ export const motionFormulas: FormulaDefinition[] = [
     expression: "v = s / t",
     latex: "v = \\frac{s}{t}",
     variables: "s = displacement, t = time",
+    scenario: "kinematics",
   },
   {
     id: "acceleration",
@@ -72,7 +96,7 @@ export const motionFormulas: FormulaDefinition[] = [
     expression: "a = (v - u) / t",
     latex: "a = \\frac{v-u}{t}",
     variables: "u = initial velocity, v = final velocity",
-    scenario: "force",
+    scenario: "kinematics",
   },
   {
     id: "motion-1",
@@ -81,7 +105,16 @@ export const motionFormulas: FormulaDefinition[] = [
     expression: "v = u + at",
     latex: "v = u + at",
     variables: "a = acceleration, t = time",
-    scenario: "projectile",
+    scenario: "kinematics",
+  },
+  {
+    id: "motion-2",
+    chapter: "Motion",
+    title: "Average velocity and displacement",
+    expression: "s = ((u + v) / 2) t",
+    latex: "s = \\left(\\frac{u+v}{2}\\right)t",
+    variables: "u = initial velocity, v = final velocity, t = time",
+    scenario: "kinematics",
   },
   {
     id: "motion-3",
@@ -90,7 +123,16 @@ export const motionFormulas: FormulaDefinition[] = [
     expression: "s = ut + 1/2 at^2",
     latex: "s = ut + \\frac{1}{2}at^2",
     variables: "s = displacement, u = initial velocity",
-    scenario: "projectile",
+    scenario: "kinematics",
+  },
+  {
+    id: "motion-4",
+    chapter: "Motion",
+    title: "Velocity-displacement relation",
+    expression: "v^2 = u^2 + 2as",
+    latex: "v^2 = u^2 + 2as",
+    variables: "v = final velocity, u = initial velocity, a = acceleration",
+    scenario: "kinematics",
   },
 ];
 
@@ -120,6 +162,33 @@ export const forceFormulas: FormulaDefinition[] = [
     expression: "p = mv",
     latex: "p = mv",
     variables: "m = mass, v = velocity",
+    scenario: "force",
+  },
+  {
+    id: "impulse",
+    chapter: "Force",
+    title: "Impulse of Force",
+    expression: "J = Ft = m(v - u)",
+    latex: "J = Ft = m(v - u)",
+    variables: "J = impulse, F = force, t = time, m = mass",
+    scenario: "force",
+  },
+  {
+    id: "conservation",
+    chapter: "Force",
+    title: "Conservation of Momentum",
+    expression: "m1u1 + m2u2 = m1v1 + m2v2",
+    latex: "m_1u_1 + m_2u_2 = m_1v_1 + m_2v_2",
+    variables: "m = mass, u = initial velocity, v = final velocity",
+    scenario: "force",
+  },
+  {
+    id: "centripetal",
+    chapter: "Force",
+    title: "Centripetal Force",
+    expression: "F = mv^2 / r",
+    latex: "F = \\frac{mv^2}{r}",
+    variables: "m = mass, v = velocity, r = radius",
     scenario: "force",
   },
 ];

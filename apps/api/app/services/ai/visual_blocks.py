@@ -1,5 +1,72 @@
 import re
+import json
+import urllib.request
+import urllib.error
 from app.schemas.chat import VisualBlock
+
+
+def query_physics_intent_llm(message: str) -> dict | None:
+    prompt = f"""
+You are an intent parser for a physics lab application.
+Analyze the user's message.
+
+Step 1. Check if the formula matches one of these valid formulas:
+- kinematics: velocity, acceleration, motion-1, motion-2, motion-3, motion-4
+- force: gravitational-force, newton-second-law, momentum, impulse, conservation, centripetal
+- energy: kinetic-energy, potential-energy, work
+- pressure: pressure, liquid-pressure
+- waves: wave-velocity, frequency-period, echo-distance
+- electricity: ohms-law, electric-power
+
+If it matches, return a JSON like:
+{{"scenario": "<scenario>", "formulaId": "<formula>", "u": 5, "v": 10, "a": -9.8, "s": 100, "t": 2}}
+(Extract any numeric parameters mentioned for u, v, a, s, t, mass, force, etc).
+
+Step 2. If the user asks for a physics concept NOT in the list (e.g. "pendulum", "spring", "coriolis"), generate a schema.
+Allowed object types: pendulum, spring, wave.
+Return JSON:
+{{
+  "scenario": "generative",
+  "schema": {{
+    "sceneType": "custom",
+    "title": "<Title>",
+    "description": "<Desc>",
+    "objects": [
+      {{ "id": "obj1", "type": "pendulum", "params": {{"length": 250, "gravity": 9.8, "initialAngle": 45}} }}
+    ],
+    "sliders": [
+      {{ "key": "gravity", "label": "Gravity", "min": 1, "max": 20, "step": 0.1, "value": 9.8, "unit": "m/s²" }}
+    ]
+  }}
+}}
+
+Valid object types: "pendulum", "projectile", "spring", "wave", "vector", "particle", "mass-on-incline", "lens".
+
+User message: "{message}"
+
+Return ONLY a valid JSON object (no markdown, no backticks).
+"""
+    url = "http://localhost:11434/api/generate"
+    data = {
+        "model": "qwen2.5:3b",
+        "prompt": prompt,
+        "format": "json",
+        "stream": False
+    }
+    req = urllib.request.Request(url, data=json.dumps(data).encode('utf-8'), headers={'Content-Type': 'application/json'})
+    try:
+        with urllib.request.urlopen(req, timeout=30) as response:
+            result = json.loads(response.read().decode('utf-8'))
+            text = result['response'].strip()
+            if text.startswith('```json'):
+                text = text[7:]
+            if text.endswith('```'):
+                text = text[:-3]
+            parsed = json.loads(text.strip())
+            return parsed
+    except Exception as e:
+        print(f"LLM parsing failed: {e}")
+        return None
 
 
 def infer_visual_blocks(message: str) -> list[VisualBlock]:
@@ -204,6 +271,22 @@ def infer_visual_blocks(message: str) -> list[VisualBlock]:
 
 def infer_physics_lab_params(normalized: str) -> dict[str, float | str] | None:
     formula_id = infer_formula_id(normalized)
+
+    # 1. Try LLM first
+    llm_result = query_physics_intent_llm(normalized)
+    if llm_result and "scenario" in llm_result:
+        # Override generative if we have a strict match
+        if llm_result["scenario"] == "generative" and formula_id:
+            llm_result["scenario"] = scenario_for_formula(formula_id)
+            llm_result["formulaId"] = formula_id
+
+        valid_scenarios = {"projectile", "force", "energy", "pressure", "waves", "electricity", "generative", "kinematics"}
+        if llm_result["scenario"] in valid_scenarios:
+            if formula_id and "formulaId" not in llm_result:
+                llm_result["formulaId"] = formula_id
+            return llm_result
+
+    # 2. Fallback to heuristics
     if formula_id:
         return {"scenario": scenario_for_formula(formula_id), "formulaId": formula_id}
 
@@ -221,7 +304,9 @@ def infer_physics_lab_params(normalized: str) -> dict[str, float | str] | None:
         return None
 
     scenario = "projectile"
-    if any(keyword in normalized for keyword in ["ohm", "current", "electric", "voltage", "resistance"]):
+    if any(keyword in normalized for keyword in ["velocity", "acceleration", "motion equation", "kinematics"]):
+        scenario = "kinematics"
+    elif any(keyword in normalized for keyword in ["ohm", "current", "electric", "voltage", "resistance"]):
         scenario = "electricity"
     elif any(keyword in normalized for keyword in ["wave", "sound", "frequency", "wavelength", "echo"]):
         scenario = "waves"
@@ -270,6 +355,64 @@ def infer_formula_id(normalized: str) -> str | None:
         ),
         ("momentum", ["momentum", "p = mv", "p=mv", "mass times velocity"]),
         (
+            "impulse",
+            [
+                "impulse",
+                "j = ft",
+                "j=ft",
+                "change in momentum",
+                "m(v-u)",
+                "force times time",
+            ],
+        ),
+        (
+            "conservation",
+            [
+                "conservation of momentum",
+                "momentum is conserved",
+                "m1u1",
+                "m1v1",
+                "m1u1 + m2u2",
+                "collision",
+                "collisions",
+                "collusion",
+                "collution",
+                "collisions formula explanation",
+                "elastic collision",
+                "momentum conservation",
+            ],
+        ),
+        (
+            "centripetal",
+            [
+                "centripetal",
+                "circular motion",
+                "mv^2/r",
+                "mv2/r",
+                "mv squared by r",
+                "force towards center",
+            ],
+        ),
+        (
+            "velocity",
+            [
+                "velocity",
+                "speed",
+                "v = s / t",
+                "v=s/t",
+                "distance over time",
+            ],
+        ),
+        (
+            "acceleration",
+            [
+                "acceleration",
+                "a = (v - u) / t",
+                "a=(v-u)/t",
+                "rate of change of velocity",
+            ],
+        ),
+        (
             "motion-1",
             [
                 "v = u + at",
@@ -277,6 +420,15 @@ def infer_formula_id(normalized: str) -> str | None:
                 "first equation of motion",
                 "final velocity",
                 "initial velocity plus acceleration",
+            ],
+        ),
+        (
+            "motion-2",
+            [
+                "s = ((u + v) / 2)",
+                "s=((u+v)/2)*t",
+                "average velocity times time",
+                "second equation of motion",
             ],
         ),
         (
@@ -288,6 +440,16 @@ def infer_formula_id(normalized: str) -> str | None:
                 "half at squared",
                 "displacement with acceleration",
                 "third equation of motion",
+            ],
+        ),
+        (
+            "motion-4",
+            [
+                "v^2 = u^2",
+                "v2 = u2",
+                "v squared equals u squared",
+                "fourth equation of motion",
+                "2as",
             ],
         ),
         ("kinetic-energy", ["kinetic energy", "energy of motion", "half mv square", "1/2 mv", "moving energy"]),
@@ -310,7 +472,9 @@ def infer_formula_id(normalized: str) -> str | None:
 
 
 def scenario_for_formula(formula_id: str) -> str:
-    if formula_id in {"gravitational-force", "newton-second-law", "momentum"}:
+    if formula_id in {"velocity", "acceleration", "motion-1", "motion-2", "motion-3", "motion-4"}:
+        return "kinematics"
+    if formula_id in {"gravitational-force", "newton-second-law", "momentum", "impulse", "conservation", "centripetal"}:
         return "force"
     if formula_id in {"kinetic-energy", "potential-energy", "work"}:
         return "energy"

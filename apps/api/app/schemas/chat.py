@@ -1,4 +1,4 @@
-from typing import Literal
+from typing import Literal, Any
 
 from pydantic import BaseModel, Field
 
@@ -33,7 +33,7 @@ class VisualBlock(BaseModel):
         "physics.engineLab",
         "math.quadraticGraph",
     ]
-    params: dict[str, float | str]
+    params: dict[str, Any]
 
 
 class ChatResponse(BaseModel):
