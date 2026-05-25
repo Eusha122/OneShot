@@ -1,6 +1,8 @@
 import { useEffect, useId, useRef, useState } from "react";
 import JXG from "jsxgraph";
 import { Maximize2, Minus, Plus, RotateCcw } from "lucide-react";
+import { RevealControls } from "../visual-blocks/ProgressiveReveal";
+import type { VisualBlockPhase } from "../visual-blocks/visualBlockTypes";
 import { formatSineEquation, type SineGraphParams } from "./functionGraphEngine";
 
 const defaultParams: SineGraphParams = {
@@ -32,7 +34,13 @@ const tickStyle = {
   },
 };
 
-export function FunctionGraph({ initialParams = defaultParams }: { initialParams?: SineGraphParams }) {
+export function FunctionGraph({
+  initialParams = defaultParams,
+  phase = "interactive",
+}: {
+  initialParams?: SineGraphParams;
+  phase?: VisualBlockPhase;
+}) {
   const rawBoardId = useId();
   const boardId = `graph-${rawBoardId.replace(/:/g, "")}`;
   const boardRef = useRef<JXG.Board | null>(null);
@@ -160,6 +168,11 @@ export function FunctionGraph({ initialParams = defaultParams }: { initialParams
     boardRef.current?.zoomOut();
   }
 
+  function replay() {
+    setParams(initialParams);
+    resetView();
+  }
+
   return (
     <div className="mt-3 rounded-lg bg-[#111111] p-3">
       <div className="relative overflow-hidden rounded-lg border border-[#d0d0d0] bg-white shadow-sm">
@@ -179,38 +192,51 @@ export function FunctionGraph({ initialParams = defaultParams }: { initialParams
 
       <div className="mt-3 flex flex-wrap items-center justify-between gap-3 text-xs text-[#9ca3af]">
         <span>{formatSineEquation(params)}</span>
-        <span className="inline-flex items-center gap-1.5">
-          <Maximize2 size={12} />
-          Pan and zoom enabled
-        </span>
+        <div className="flex items-center gap-4">
+          <span className="inline-flex items-center gap-1.5">
+            <Maximize2 size={12} />
+            Pan and zoom enabled
+          </span>
+          <button
+            type="button"
+            aria-label="Replay sine graph"
+            onClick={replay}
+            className="inline-flex items-center gap-1.5 text-[#9ca3af] transition hover:text-[#f5f5f5]"
+          >
+            <RotateCcw size={13} />
+            Replay
+          </button>
+        </div>
       </div>
 
-      <div className="mt-3 grid gap-3 sm:grid-cols-3">
-        <Slider
-          label="Amplitude"
-          max={3}
-          min={0.5}
-          onChange={(amplitude) => setParams((current) => ({ ...current, amplitude }))}
-          step={0.1}
-          value={params.amplitude}
-        />
-        <Slider
-          label="Frequency"
-          max={3}
-          min={0.5}
-          onChange={(frequency) => setParams((current) => ({ ...current, frequency }))}
-          step={0.1}
-          value={params.frequency}
-        />
-        <Slider
-          label="Phase"
-          max={3.14}
-          min={-3.14}
-          onChange={(phase) => setParams((current) => ({ ...current, phase }))}
-          step={0.1}
-          value={params.phase}
-        />
-      </div>
+      <RevealControls visible={phase === "interactive"}>
+        <div className="mt-3 grid gap-3 sm:grid-cols-3">
+          <Slider
+            label="Amplitude"
+            max={3}
+            min={0.5}
+            onChange={(amplitude) => setParams((current) => ({ ...current, amplitude }))}
+            step={0.1}
+            value={params.amplitude}
+          />
+          <Slider
+            label="Frequency"
+            max={3}
+            min={0.5}
+            onChange={(frequency) => setParams((current) => ({ ...current, frequency }))}
+            step={0.1}
+            value={params.frequency}
+          />
+          <Slider
+            label="Phase"
+            max={3.14}
+            min={-3.14}
+            onChange={(phase) => setParams((current) => ({ ...current, phase }))}
+            step={0.1}
+            value={params.phase}
+          />
+        </div>
+      </RevealControls>
     </div>
   );
 }

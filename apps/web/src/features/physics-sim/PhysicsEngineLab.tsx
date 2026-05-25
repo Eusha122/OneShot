@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import katex from "katex";
 import { Activity, Atom, Droplets, Eye, Gauge, RotateCcw, Waves, Zap } from "lucide-react";
+import { RevealControls } from "../visual-blocks/ProgressiveReveal";
+import type { VisualBlockPhase } from "../visual-blocks/visualBlockTypes";
 import { SimulationEngine } from "./SimulationEngine";
 import { KinematicsScene } from "./kinematics/scenes/KinematicsScene";
 import { ForceScene } from "./force/scenes/ForceScene";
@@ -34,9 +36,16 @@ const scenarioOptions: { id: PhysicsLabScenario; label: string }[] = [
   { id: "electricity", label: "Electricity" },
 ];
 
-export function PhysicsEngineLab({ initialParams }: { initialParams?: Partial<PhysicsLabParams> }) {
+export function PhysicsEngineLab({
+  initialParams,
+  phase = "interactive",
+}: {
+  initialParams?: Partial<PhysicsLabParams>;
+  phase?: VisualBlockPhase;
+}) {
   const [params, setParams] = useState<PhysicsLabParams>({ ...defaultPhysicsLabParams, ...initialParams });
   const [progress, setProgress] = useState(0);
+  const [replayId, setReplayId] = useState(0);
   const selectedFormula = params.formulaId ? formulaById(params.formulaId) : undefined;
   const activeFormulas = selectedFormula ? [selectedFormula] : formulasForScenario(params.scenario);
   const isExactFormulaMode = Boolean(selectedFormula);
@@ -57,7 +66,7 @@ export function PhysicsEngineLab({ initialParams }: { initialParams?: Partial<Ph
     setProgress(0);
     frameId = requestAnimationFrame(animate);
     return () => cancelAnimationFrame(frameId);
-  }, [params]);
+  }, [params, replayId]);
 
   if (params.scenario === "generative" && params.schema) {
     return <SimulationEngine schema={params.schema} />;
@@ -89,13 +98,19 @@ export function PhysicsEngineLab({ initialParams }: { initialParams?: Partial<Ph
       ) : null}
 
       {params.scenario === "kinematics" ? (
-        <KinematicsScene params={params} updateParam={updateParam} />
+        <>
+          <KinematicsScene key={replayId} params={params} updateParam={updateParam} />
+          <ReplayButton onReplay={() => setReplayId((v) => v + 1)} />
+        </>
       ) : params.scenario === "force" ? (
-        <ForceScene params={params} updateParam={updateParam} />
+        <>
+          <ForceScene key={replayId} params={params} updateParam={updateParam} />
+          <ReplayButton onReplay={() => setReplayId((v) => v + 1)} />
+        </>
       ) : params.scenario === "waves" ? (
         <>
           <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_280px]">
-            <WaveScene params={params} updateParam={updateParam} />
+            <WaveScene key={replayId} params={params} updateParam={updateParam} />
             <aside className="rounded-md border border-[#1f1f1f] bg-[#0d0d0d] p-3">
               <div className="flex items-center gap-2 text-xs font-medium text-[#f5f5f5]">
                 <ScenarioIcon scenario={params.scenario} />
@@ -108,12 +123,15 @@ export function PhysicsEngineLab({ initialParams }: { initialParams?: Partial<Ph
               </div>
             </aside>
           </div>
-          <Controls params={params} onChange={updateParam} />
+          <RevealControls visible={phase === "interactive"}>
+            <Controls params={params} onChange={updateParam} />
+          </RevealControls>
+          <ReplayButton onReplay={() => setReplayId((v) => v + 1)} />
         </>
       ) : params.scenario === "optics" ? (
         <>
           <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_280px]">
-            <OpticsScene params={params} updateParam={updateParam} />
+            <OpticsScene key={replayId} params={params} updateParam={updateParam} />
             <aside className="rounded-md border border-[#1f1f1f] bg-[#0d0d0d] p-3">
               <div className="flex items-center gap-2 text-xs font-medium text-[#f5f5f5]">
                 <ScenarioIcon scenario={params.scenario} />
@@ -126,12 +144,15 @@ export function PhysicsEngineLab({ initialParams }: { initialParams?: Partial<Ph
               </div>
             </aside>
           </div>
-          <Controls params={params} onChange={updateParam} />
+          <RevealControls visible={phase === "interactive"}>
+            <Controls params={params} onChange={updateParam} />
+          </RevealControls>
+          <ReplayButton onReplay={() => setReplayId((v) => v + 1)} />
         </>
       ) : params.scenario === "electricity" ? (
         <>
           <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_280px]">
-            <ElectricityScene params={params} updateParam={updateParam} />
+            <ElectricityScene key={replayId} params={params} updateParam={updateParam} />
             <aside className="rounded-md border border-[#1f1f1f] bg-[#0d0d0d] p-3">
               <div className="flex items-center gap-2 text-xs font-medium text-[#f5f5f5]">
                 <ScenarioIcon scenario={params.scenario} />
@@ -144,7 +165,10 @@ export function PhysicsEngineLab({ initialParams }: { initialParams?: Partial<Ph
               </div>
             </aside>
           </div>
-          <Controls params={params} onChange={updateParam} />
+          <RevealControls visible={phase === "interactive"}>
+            <Controls params={params} onChange={updateParam} />
+          </RevealControls>
+          <ReplayButton onReplay={() => setReplayId((v) => v + 1)} />
         </>
       ) : (
         <>
@@ -166,13 +190,15 @@ export function PhysicsEngineLab({ initialParams }: { initialParams?: Partial<Ph
             </aside>
           </div>
 
-          <Controls params={params} onChange={updateParam} />
+          <RevealControls visible={phase === "interactive"}>
+            <Controls params={params} onChange={updateParam} />
+          </RevealControls>
 
           <div className="mt-3 flex flex-wrap items-center justify-between gap-3 text-xs text-[#9ca3af]">
             <Metrics params={params} />
             <button
               type="button"
-              onClick={() => setProgress(0)}
+              onClick={() => setReplayId((v) => v + 1)}
               className="inline-flex items-center gap-1.5 text-[#9ca3af] transition hover:text-[#f5f5f5]"
             >
               <RotateCcw size={13} />
@@ -626,6 +652,21 @@ function toPath(points: { x: number; y: number }[]) {
   if (points.length === 0) return "";
   const [first, ...rest] = points;
   return rest.reduce((path, point) => `${path} L${point.x.toFixed(2)} ${point.y.toFixed(2)}`, `M${first.x.toFixed(2)} ${first.y.toFixed(2)}`);
+}
+
+function ReplayButton({ onReplay }: { onReplay: () => void }) {
+  return (
+    <div className="mt-3 flex justify-end">
+      <button
+        type="button"
+        onClick={onReplay}
+        className="inline-flex items-center gap-1.5 text-xs text-[#9ca3af] transition hover:text-[#f5f5f5]"
+      >
+        <RotateCcw size={13} />
+        Replay
+      </button>
+    </div>
+  );
 }
 
 

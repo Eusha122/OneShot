@@ -1,6 +1,8 @@
 import { useEffect, useId, useRef, useState } from "react";
 import JXG from "jsxgraph";
 import { Maximize2, Minus, Plus, RotateCcw } from "lucide-react";
+import { RevealControls } from "../visual-blocks/ProgressiveReveal";
+import type { VisualBlockPhase } from "../visual-blocks/visualBlockTypes";
 import type { QuadraticParams } from "../visual-blocks/visualBlockTypes";
 
 const defaultParams: QuadraticParams = {
@@ -32,7 +34,13 @@ const tickStyle = {
   },
 };
 
-export function QuadraticGraph({ initialParams = defaultParams }: { initialParams?: QuadraticParams }) {
+export function QuadraticGraph({
+  initialParams = defaultParams,
+  phase = "interactive",
+}: {
+  initialParams?: QuadraticParams;
+  phase?: VisualBlockPhase;
+}) {
   const rawBoardId = useId();
   const boardId = `quad-graph-${rawBoardId.replace(/:/g, "")}`;
   
@@ -46,7 +54,6 @@ export function QuadraticGraph({ initialParams = defaultParams }: { initialParam
   const initialFeaturesRef = useRef(calculateQuadraticFeatures(initialParams));
   const [params, setParams] = useState(initialParams);
 
-  // Compute key points mathematically for overlay
   const { root1, root2, vertexX, vertexY } = calculateQuadraticFeatures(params);
 
   useEffect(() => {
@@ -111,7 +118,6 @@ export function QuadraticGraph({ initialParams = defaultParams }: { initialParam
 
     boardRef.current = board;
 
-    // Create Parabola Graph
     graphRef.current = board.create(
       "functiongraph",
       [(x: number) => evaluateQuadratic(x, initialParamsRef.current)],
@@ -123,7 +129,6 @@ export function QuadraticGraph({ initialParams = defaultParams }: { initialParam
       },
     ) as JXG.Curve;
 
-    // Create Vertex Point (Red)
     vertexPointRef.current = board.create("point", [initialFeaturesRef.current.vertexX, initialFeaturesRef.current.vertexY], {
       name: "Vertex",
       fillColor: "#ef4444",
@@ -137,7 +142,6 @@ export function QuadraticGraph({ initialParams = defaultParams }: { initialParam
       },
     }) as JXG.Point;
 
-    // Create Root 1 Point (Green)
     root1PointRef.current = board.create("point", [initialFeaturesRef.current.root1 !== null ? initialFeaturesRef.current.root1 : 9999, 0], {
       name: initialFeaturesRef.current.root1 !== null ? "Root 1" : "",
       fillColor: "#10b981",
@@ -152,7 +156,6 @@ export function QuadraticGraph({ initialParams = defaultParams }: { initialParam
       },
     }) as JXG.Point;
 
-    // Create Root 2 Point (Green)
     root2PointRef.current = board.create("point", [initialFeaturesRef.current.root2 !== null ? initialFeaturesRef.current.root2 : 9999, 0], {
       name: initialFeaturesRef.current.root2 !== null ? "Root 2" : "",
       fillColor: "#10b981",
@@ -184,7 +187,6 @@ export function QuadraticGraph({ initialParams = defaultParams }: { initialParam
     };
   }, [boardId]);
 
-  // Update elements dynamically when parameters change
   useEffect(() => {
     const board = boardRef.current;
     const graph = graphRef.current;
@@ -192,12 +194,10 @@ export function QuadraticGraph({ initialParams = defaultParams }: { initialParam
 
     graph.Y = (x: number) => evaluateQuadratic(x, params);
 
-    // Update Vertex
     if (vertexPointRef.current) {
       vertexPointRef.current.setPosition(JXG.COORDS_BY_USER, [vertexX, vertexY]);
     }
 
-    // Update Roots
     if (root1PointRef.current) {
       if (root1 !== null) {
         root1PointRef.current.setAttribute({ visible: true, name: `Root: ${root1.toFixed(2)}` });
@@ -232,6 +232,11 @@ export function QuadraticGraph({ initialParams = defaultParams }: { initialParam
     boardRef.current?.zoomOut();
   }
 
+  function replay() {
+    setParams(initialParams);
+    resetView();
+  }
+
   return (
     <div className="mt-3 rounded-lg bg-[#111111] p-3">
       <div className="relative overflow-hidden rounded-lg border border-[#d0d0d0] bg-white shadow-sm">
@@ -251,13 +256,23 @@ export function QuadraticGraph({ initialParams = defaultParams }: { initialParam
 
       <div className="mt-3 flex flex-wrap items-center justify-between gap-3 text-xs text-[#9ca3af]">
         <span className="font-mono text-[#e5e7eb] font-semibold">{formatQuadraticEquation(params)}</span>
-        <span className="inline-flex items-center gap-1.5">
-          <Maximize2 size={12} />
-          Pan and zoom enabled
-        </span>
+        <div className="flex items-center gap-4">
+          <span className="inline-flex items-center gap-1.5">
+            <Maximize2 size={12} />
+            Pan and zoom enabled
+          </span>
+          <button
+            type="button"
+            aria-label="Replay quadratic graph"
+            onClick={replay}
+            className="inline-flex items-center gap-1.5 text-[#9ca3af] transition hover:text-[#f5f5f5]"
+          >
+            <RotateCcw size={13} />
+            Replay
+          </button>
+        </div>
       </div>
 
-      {/* Info Boxes */}
       <div className="mt-2 grid grid-cols-2 gap-2 text-[11px] font-mono text-[#9ca3af]">
         <div className="rounded bg-[#1c1c1c] p-2">
           <div className="text-white font-semibold">Vertex:</div>
@@ -273,33 +288,34 @@ export function QuadraticGraph({ initialParams = defaultParams }: { initialParam
         </div>
       </div>
 
-      {/* Sliders */}
-      <div className="mt-3 grid gap-3 sm:grid-cols-3">
-        <Slider
-          label="a (Quad coefficient)"
-          max={3}
-          min={-3}
-          onChange={(a) => setParams((current) => ({ ...current, a }))}
-          step={0.1}
-          value={params.a}
-        />
-        <Slider
-          label="b (Linear coefficient)"
-          max={5}
-          min={-5}
-          onChange={(b) => setParams((current) => ({ ...current, b }))}
-          step={0.1}
-          value={params.b}
-        />
-        <Slider
-          label="c (Constant)"
-          max={5}
-          min={-5}
-          onChange={(c) => setParams((current) => ({ ...current, c }))}
-          step={0.1}
-          value={params.c}
-        />
-      </div>
+      <RevealControls visible={phase === "interactive"}>
+        <div className="mt-3 grid gap-3 sm:grid-cols-3">
+          <Slider
+            label="a (Quad coefficient)"
+            max={3}
+            min={-3}
+            onChange={(a) => setParams((current) => ({ ...current, a }))}
+            step={0.1}
+            value={params.a}
+          />
+          <Slider
+            label="b (Linear coefficient)"
+            max={5}
+            min={-5}
+            onChange={(b) => setParams((current) => ({ ...current, b }))}
+            step={0.1}
+            value={params.b}
+          />
+          <Slider
+            label="c (Constant)"
+            max={5}
+            min={-5}
+            onChange={(c) => setParams((current) => ({ ...current, c }))}
+            step={0.1}
+            value={params.c}
+          />
+        </div>
+      </RevealControls>
     </div>
   );
 }

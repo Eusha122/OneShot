@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { RotateCcw } from "lucide-react";
+import { RevealControls } from "../visual-blocks/ProgressiveReveal";
+import type { VisualBlockPhase } from "../visual-blocks/visualBlockTypes";
 import {
   calculateProjectileSimulation,
   pointAtProgress,
@@ -20,7 +22,13 @@ const defaultParams: ProjectileParams = {
   gravity: 9.8,
 };
 
-export function ProjectileSimulation({ initialParams = defaultParams }: { initialParams?: ProjectileParams }) {
+export function ProjectileSimulation({
+  initialParams = defaultParams,
+  phase = "interactive",
+}: {
+  initialParams?: ProjectileParams;
+  phase?: VisualBlockPhase;
+}) {
   const [params, setParams] = useState(initialParams);
   const [progress, setProgress] = useState(1);
   const [replayId, setReplayId] = useState(0);
@@ -47,6 +55,10 @@ export function ProjectileSimulation({ initialParams = defaultParams }: { initia
     return () => cancelAnimationFrame(frameId);
   }, [replayId, params]);
 
+  function replay() {
+    setReplayId((value) => value + 1);
+  }
+
   return (
     <div className="mt-3 rounded-lg bg-[#111111] p-3">
       <div className="relative h-52 overflow-hidden rounded-md bg-[#0d0d0d]">
@@ -64,35 +76,37 @@ export function ProjectileSimulation({ initialParams = defaultParams }: { initia
         </svg>
       </div>
 
-      <div className="mt-3 grid gap-3 sm:grid-cols-3">
-        <Slider
-          label="Speed"
-          max={50}
-          min={16}
-          step={1}
-          value={params.speed}
-          unit="m/s"
-          onChange={(speed) => setParams((current) => ({ ...current, speed }))}
-        />
-        <Slider
-          label="Angle"
-          max={75}
-          min={20}
-          step={1}
-          value={params.angleDegrees}
-          unit="deg"
-          onChange={(angleDegrees) => setParams((current) => ({ ...current, angleDegrees }))}
-        />
-        <Slider
-          label="Gravity"
-          max={14}
-          min={4}
-          step={0.1}
-          value={params.gravity}
-          unit="m/s2"
-          onChange={(gravity) => setParams((current) => ({ ...current, gravity }))}
-        />
-      </div>
+      <RevealControls visible={phase === "interactive"}>
+        <div className="mt-3 grid gap-3 sm:grid-cols-3">
+          <Slider
+            label="Speed"
+            max={50}
+            min={16}
+            step={1}
+            value={params.speed}
+            unit="m/s"
+            onChange={(speed) => setParams((current) => ({ ...current, speed }))}
+          />
+          <Slider
+            label="Angle"
+            max={75}
+            min={20}
+            step={1}
+            value={params.angleDegrees}
+            unit="deg"
+            onChange={(angleDegrees) => setParams((current) => ({ ...current, angleDegrees }))}
+          />
+          <Slider
+            label="Gravity"
+            max={14}
+            min={4}
+            step={0.1}
+            value={params.gravity}
+            unit="m/s2"
+            onChange={(gravity) => setParams((current) => ({ ...current, gravity }))}
+          />
+        </div>
+      </RevealControls>
 
       <div className="mt-3 flex flex-wrap items-center justify-between gap-3 text-xs text-[#9ca3af]">
         <div className="flex flex-wrap gap-x-4 gap-y-1">
@@ -103,7 +117,7 @@ export function ProjectileSimulation({ initialParams = defaultParams }: { initia
         <button
           type="button"
           aria-label="Replay projectile motion"
-          onClick={() => setReplayId((value) => value + 1)}
+          onClick={replay}
           className="inline-flex items-center gap-1.5 text-[#9ca3af] transition hover:text-[#f5f5f5]"
         >
           <RotateCcw size={13} />

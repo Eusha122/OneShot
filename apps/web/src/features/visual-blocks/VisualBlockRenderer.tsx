@@ -1,4 +1,5 @@
 import { lazy, Suspense } from "react";
+import { ProgressiveReveal } from "./ProgressiveReveal";
 import type { LearningVisualBlock } from "./visualBlockTypes";
 
 const FunctionGraph = lazy(() =>
@@ -27,17 +28,21 @@ const QuadraticGraph = lazy(() =>
 
 export function VisualBlockRenderer({ block }: { block: LearningVisualBlock }) {
   return (
-    <Suspense fallback={<VisualBlockLoading />}>
-      {block.type === "physics.projectile" ? (
-        <ProjectileSimulation initialParams={block.params} />
-      ) : block.type === "physics.engineLab" ? (
-        <PhysicsEngineLab initialParams={block.params} />
-      ) : block.type === "math.quadraticGraph" ? (
-        <QuadraticGraph initialParams={block.params} />
-      ) : (
-        <FunctionGraph initialParams={block.params} />
+    <ProgressiveReveal>
+      {(phase) => (
+        <Suspense fallback={<VisualBlockLoading />}>
+          {block.type === "physics.projectile" ? (
+            <ProjectileSimulation initialParams={block.params} phase={phase} />
+          ) : block.type === "physics.engineLab" ? (
+            <PhysicsEngineLab initialParams={block.params} phase={phase} />
+          ) : block.type === "math.quadraticGraph" ? (
+            <QuadraticGraph initialParams={block.params} phase={phase} />
+          ) : block.type === "math.sineGraph" ? (
+            <FunctionGraph initialParams={block.params} phase={phase} />
+          ) : null}
+        </Suspense>
       )}
-    </Suspense>
+    </ProgressiveReveal>
   );
 }
 
