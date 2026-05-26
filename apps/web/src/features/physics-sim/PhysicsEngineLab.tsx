@@ -659,6 +659,7 @@ function ReplayButton({ onReplay }: { onReplay: () => void }) {
     <div className="mt-3 flex justify-end">
       <button
         type="button"
+        aria-label="Replay simulation"
         onClick={onReplay}
         className="inline-flex items-center gap-1.5 text-xs text-[#9ca3af] transition hover:text-[#f5f5f5]"
       >

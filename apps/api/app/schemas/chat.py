@@ -21,6 +21,7 @@ class ChatMessage(BaseModel):
 class ChatRequest(BaseModel):
     message: str = Field(min_length=1)
     learning_mode: LearningMode = "visual_mode"
+    conversation_id: int | None = None
     history: list[ChatMessage] = Field(default_factory=list)
 
 

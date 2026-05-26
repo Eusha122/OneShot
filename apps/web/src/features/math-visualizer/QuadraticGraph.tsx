@@ -233,7 +233,7 @@ export function QuadraticGraph({
   }
 
   function replay() {
-    setParams(initialParams);
+    setParams(initialParamsRef.current);
     resetView();
   }
 

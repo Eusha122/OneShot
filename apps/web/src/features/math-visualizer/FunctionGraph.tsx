@@ -169,7 +169,7 @@ export function FunctionGraph({
   }
 
   function replay() {
-    setParams(initialParams);
+    setParams(initialParamsRef.current);
     resetView();
   }
 

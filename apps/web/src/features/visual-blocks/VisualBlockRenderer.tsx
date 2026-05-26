@@ -35,11 +35,15 @@ export function VisualBlockRenderer({ block }: { block: LearningVisualBlock }) {
             <ProjectileSimulation initialParams={block.params} phase={phase} />
           ) : block.type === "physics.engineLab" ? (
             <PhysicsEngineLab initialParams={block.params} phase={phase} />
+          ) : block.type === "physics.forceMotion" ? (
+            <PhysicsEngineLab initialParams={{ ...block.params, scenario: "force" }} phase={phase} />
           ) : block.type === "math.quadraticGraph" ? (
             <QuadraticGraph initialParams={block.params} phase={phase} />
           ) : block.type === "math.sineGraph" ? (
             <FunctionGraph initialParams={block.params} phase={phase} />
-          ) : null}
+          ) : (
+            ((exhaustive: never) => null)(block)
+          )}
         </Suspense>
       )}
     </ProgressiveReveal>

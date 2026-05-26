@@ -17,8 +17,13 @@ export function ProgressiveReveal({
   const [phase, setPhase] = useState<VisualBlockPhase>("entering");
 
   useEffect(() => {
-    const contentTimer = setTimeout(() => setPhase("revealed"), timing.contentDelay);
-    const controlsTimer = setTimeout(() => setPhase("interactive"), timing.controlsDelay);
+    let controlsTimer: ReturnType<typeof setTimeout>;
+    const contentTimer = setTimeout(() => {
+      setPhase("revealed");
+      // Controls timer starts only after "revealed", treating controlsDelay as
+      // a relative delay from the reveal moment.
+      controlsTimer = setTimeout(() => setPhase("interactive"), timing.controlsDelay);
+    }, timing.contentDelay);
 
     return () => {
       clearTimeout(contentTimer);

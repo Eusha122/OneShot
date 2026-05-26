@@ -14,3 +14,4 @@ __pycache__/
 uploads/
 chroma_data/
 postgres_data/
+production tasks.md

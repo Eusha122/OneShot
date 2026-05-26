@@ -11,7 +11,7 @@ MODE_INSTRUCTIONS: dict[LearningMode, str] = {
 }
 
 
-def build_tutor_prompt(message: str, learning_mode: LearningMode) -> str:
+def build_tutor_prompt(message: str, learning_mode: LearningMode, context: str = "") -> str:
     return (
         f"{MODE_INSTRUCTIONS[learning_mode]}\n\n"
         "Formatting rules:\n"
@@ -22,5 +22,9 @@ def build_tutor_prompt(message: str, learning_mode: LearningMode) -> str:
         "- Use \\frac{a}{b} for fractions instead of a/b when writing math.\n"
         "- Do not use raw \\(...\\) or \\[...\\] delimiters.\n"
         "- If you create an ASCII diagram, you MUST wrap it in ```text and ``` so it uses a monospace font.\n\n"
+        "RAG RULES:\n"
+        "Answer using retrieved educational context whenever possible. Prefer trusted curriculum sources. If uncertain, clearly say so.\n"
+        "When using context, cite the source chapter and page (e.g., 'According to Chapter 3, page 44...').\n\n"
+        f"--- CONTEXT ---\n{context}\n----------------\n\n"
         f"Student question: {message}"
     )

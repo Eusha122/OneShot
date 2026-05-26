@@ -1,7 +1,10 @@
 from functools import lru_cache
+from pathlib import Path
 
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+BASE_DIR = Path(__file__).resolve().parent.parent.parent
 
 
 class Settings(BaseSettings):
@@ -9,6 +12,7 @@ class Settings(BaseSettings):
     web_origin: str = "http://localhost:5173"
     ollama_base_url: str = "http://localhost:11434"
     ollama_model: str = "qwen2.5:3b"
+    database_url: str = f"sqlite+aiosqlite:///{BASE_DIR}/oneshot.db"
     chroma_host: str = "localhost"
     chroma_port: int = 8001
     searxng_base_url: str = "http://localhost:8080"
