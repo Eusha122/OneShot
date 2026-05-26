@@ -1,66 +1,152 @@
 import logging
+import time
 from typing import List, Dict, Any, Optional
+from collections import OrderedDict
+import json
 
 from app.services.rag.embeddings import embeddings_engine
 from app.adapters.chroma_store import chroma_store
+from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
 class HybridRetriever:
-    def __init__(self):
-        pass
+    def __init__(self, max_cache_size: int = 100):
+        self._cache: OrderedDict = OrderedDict()
+        self.max_cache_size = max_cache_size
 
-    def retrieve(self, query: str, filters: Dict[str, Any], top_k: int = 5) -> List[Dict[str, Any]]:
+    def _get_cache_key(self, query: str, filters: Dict[str, Any]) -> str:
+        # Create a deterministic cache key from query and filters
+        return f"{query}_{json.dumps(filters, sort_keys=True)}"
+
+    def retrieve(self, query: str, filters: Dict[str, Any], top_k: int = 3) -> List[Dict[str, Any]]:
         """
-        Retrieves top chunks using a combination of metadata filtering and semantic search.
-        Includes trust-aware reranking/boosting.
+        Retrieves top chunks using adaptive metadata filtering and semantic search.
+        Includes trust-aware reranking and score normalization.
         """
-        logger.info(f"Retrieving for query: '{query}' with filters: {filters}")
+        # Check cache first
+        cache_key = self._get_cache_key(query, filters)
+        if cache_key in self._cache:
+            if settings.rag_debug:
+                logger.info(f"[RAG_DEBUG] Cache hit for query: '{query}'")
+            return self._cache[cache_key]
+
+        start_time = time.perf_counter()
         
+        if settings.rag_debug:
+            logger.info(f"[RAG_DEBUG] Retrieving for query: '{query}' with filters: {filters}")
+        else:
+            logger.info(f"Retrieving for query: '{query}'")
+
         # 1. Generate query embedding
+        embed_start = time.perf_counter()
         query_embedding = embeddings_engine.embed_text(query)
-        
-        # 2. Build Chroma metadata filter
+        embed_time = time.perf_counter() - embed_start
+
+        # 2. Adaptive Retrieval Flow
+        search_start = time.perf_counter()
         chroma_filter = self._build_chroma_filter(filters)
         
-        # 3. We retrieve slightly more chunks than top_k to allow for reranking
+        fallback_used = False
+        if chroma_filter and "document_ids" in filters:
+            logger.info("[RETRIEVER] document-scoped retrieval enabled")
+        
+        # Try with metadata filters
         raw_results = chroma_store.query_chunks(
             query_embeddings=[query_embedding],
             filters=chroma_filter,
-            n_results=top_k * 2
+            n_results=top_k * 3 # Retrieve more for reranking
         )
-        
+
+        # Fallback to semantic-only if metadata filtering yields no results
         if not raw_results or not raw_results['documents'] or not raw_results['documents'][0]:
+            if chroma_filter:
+                fallback_used = True
+                if settings.rag_debug:
+                    logger.info(f"[RAG_DEBUG] Metadata filter yielded empty results. Activating semantic fallback.")
+                raw_results = chroma_store.query_chunks(
+                    query_embeddings=[query_embedding],
+                    filters=None,
+                    n_results=top_k * 3
+                )
+        
+        search_time = time.perf_counter() - search_start
+
+        logger.info(f"[RETRIEVER] fallback_used={fallback_used}")
+
+        if not raw_results or not raw_results['documents'] or not raw_results['documents'][0]:
+            if settings.rag_debug:
+                logger.info(f"[RAG_DEBUG] Retrieval completely empty for query: '{query}'")
             return []
-            
+
         chunks = raw_results['documents'][0]
         metadatas = raw_results['metadatas'][0]
         distances = raw_results['distances'][0] if 'distances' in raw_results and raw_results['distances'] else [0.0] * len(chunks)
-        
-        # 4. Trust-Aware Reranking
+        chunk_ids = raw_results['ids'][0]
+
+        # 3. Trust-Aware Reranking & Score Normalization
+        rerank_start = time.perf_counter()
         scored_chunks = []
         for i in range(len(chunks)):
-            base_score = 1.0 - distances[i] if distances[i] <= 1.0 else 0.0 # Convert distance to similarity score
+            # Convert Chroma distance to similarity score
+            # Cosine distance ranges from 0 to 2, so similarity is max(0, 1 - distance)
+            similarity = max(0.0, 1.0 - distances[i])
             meta = metadatas[i]
             
             # Apply trust boosts and penalties
-            final_score = self._apply_trust_modifiers(base_score, meta, filters)
+            final_score = self._apply_trust_modifiers(similarity, meta, filters)
             
+            # Apply Similarity Threshold (Bypass if document-scoped search)
+            if not filters.get("document_ids") and final_score < settings.rag_similarity_threshold:
+                continue
+
+            content = chunks[i]
+            preview = content[:400] + "..." if len(content) > 400 else content
+
             scored_chunks.append({
-                "content": chunks[i],
+                "chunk_id": chunk_ids[i],
+                "document_id": meta.get("document_id"),
+                "content": content,
+                "preview_content": preview,
                 "score": final_score,
-                "chapter": meta.get("chapter", "Unknown"),
-                "topic": meta.get("topic", "Unknown"),
-                "subject": meta.get("subject", "Unknown"),
-                "page": meta.get("page", 0),
-                "source": meta.get("source_file", "Unknown"),
-                "trust_level": meta.get("trust_level", "medium"),
-                "source_type": meta.get("source_type", "unknown")
+                "chapter": meta.get("chapter", "Unknown") or "Unknown",
+                "topic": meta.get("topic", "Unknown") or "Unknown",
+                "subject": meta.get("subject", "Unknown") or "Unknown",
+                "page": meta.get("page", 0) or 0,
+                "source": meta.get("source_file", "Unknown") or "Unknown",
+                "trust_level": meta.get("trust_level", "medium") or "medium",
+                "source_type": meta.get("source_type", "unknown") or "unknown"
             })
             
-        # 5. Sort by final score descending and limit to top_k
+        # 4. Sort by final score descending and limit to top_k
         scored_chunks.sort(key=lambda x: x["score"], reverse=True)
-        return scored_chunks[:top_k]
+        final_results = scored_chunks[:top_k]
+        
+        logger.info(f"[RETRIEVER] retrieved_chunks={len(final_results)}")
+        if final_results:
+            logger.info(f"[RETRIEVER] top_chunk_preview=\"{final_results[0]['preview_content']}\"")
+        
+        rerank_time = time.perf_counter() - rerank_start
+
+        total_time = time.perf_counter() - start_time
+
+        # 5. Logging and Metrics
+        if settings.rag_debug:
+            logger.info(
+                f"[RAG_DEBUG] Latency - Embed: {embed_time:.3f}s, Search: {search_time:.3f}s, Rerank: {rerank_time:.3f}s, Total: {total_time:.3f}s"
+            )
+            for res in final_results:
+                logger.info(f"[RAG_DEBUG] Retrieved chunk {res['chunk_id']} with score {res['score']:.3f} from '{res['source']}'")
+        else:
+            logger.info(f"Retrieval completed in {total_time:.3f}s, found {len(final_results)} chunks above threshold.")
+
+        # 6. Cache successful results
+        if final_results:
+            self._cache[cache_key] = final_results
+            if len(self._cache) > self.max_cache_size:
+                self._cache.popitem(last=False) # Evict oldest
+
+        return final_results
 
     def _build_chroma_filter(self, user_filters: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         """
@@ -70,13 +156,18 @@ class HybridRetriever:
             return None
             
         conditions = []
-        # We strictly filter by subject if provided
         if "subject" in user_filters and user_filters["subject"]:
             conditions.append({"subject": {"$eq": user_filters["subject"].lower()}})
             
-        # We strictly filter by class_level if provided
         if "class_level" in user_filters and user_filters["class_level"]:
             conditions.append({"class_level": {"$eq": str(user_filters["class_level"])}})
+            
+        if "document_ids" in user_filters and user_filters["document_ids"]:
+            doc_ids = user_filters["document_ids"]
+            if len(doc_ids) == 1:
+                conditions.append({"document_id": {"$eq": doc_ids[0]}})
+            else:
+                conditions.append({"document_id": {"$in": doc_ids}})
             
         if not conditions:
             return None
@@ -96,15 +187,15 @@ class HybridRetriever:
         
         # Boosts
         if trust_level == "high":
-            score += 0.1
+            score += 0.05
         if source_type in ["ssc_textbook", "board_question"]:
-            score += 0.15
+            score += 0.05
             
         # Penalties
         if trust_level == "variable":
-            score -= 0.1
+            score -= 0.05
         if source_type in ["uploaded_notes", "internet"]:
-            score -= 0.15
+            score -= 0.05
             
         return score
 

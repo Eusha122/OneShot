@@ -5,6 +5,7 @@ from typing import List, Optional
 from fastapi import APIRouter, UploadFile, File, BackgroundTasks, Form, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+import hashlib
 
 from app.api.deps import AsyncSessionDep
 from app.core.storage import UPLOADS_DIR
@@ -29,6 +30,20 @@ async def upload_document(
     if not file.filename.lower().endswith('.pdf'):
         raise HTTPException(status_code=400, detail="Only PDF files are supported.")
         
+    # Read and hash file contents
+    file_content = await file.read()
+    file_hash = hashlib.sha256(file_content).hexdigest()
+    
+    # Check for duplicate
+    existing_result = await session.execute(
+        select(Document).where(Document.file_hash == file_hash)
+    )
+    existing_doc = existing_result.scalars().first()
+    
+    if existing_doc:
+        logger.info(f"Duplicate upload detected: {file.filename} matches document {existing_doc.id}")
+        return {"document_id": existing_doc.id, "status": existing_doc.status, "duplicate": True}
+        
     # Ensure UUID-safe filename without traversal risks
     safe_filename = os.path.basename(file.filename)
     unique_filename = f"{uuid.uuid4()}_{safe_filename}"
@@ -41,7 +56,7 @@ async def upload_document(
     
     # Save file to disk
     with open(file_path, "wb") as buffer:
-        shutil.copyfileobj(file.file, buffer)
+        buffer.write(file_content)
         
     logger.info(f"Upload saved successfully: {file_path}")
         
@@ -50,6 +65,7 @@ async def upload_document(
         learner_id=learner_id,
         filename=unique_filename,
         original_name=file.filename,
+        file_hash=file_hash,
         mime_type=file.content_type,
         status=DocumentStatus.pending,
         source_type=source_type,

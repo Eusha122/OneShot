@@ -75,6 +75,7 @@ class Document(Base):
     learner_id = Column(Integer, ForeignKey("learner_profiles.id"), nullable=True)
     filename = Column(String, nullable=False, unique=True)
     original_name = Column(String, nullable=False)
+    file_hash = Column(String, unique=True, nullable=True)
     mime_type = Column(String, nullable=True)
     status = Column(Enum(DocumentStatus), default=DocumentStatus.pending)
     page_count = Column(Integer, default=0)

@@ -12,6 +12,7 @@ from sqlalchemy.orm import declarative_base
 
 from app.core.config import settings
 
+# Project uses SQLAlchemy only. Do not introduce SQLModel imports.
 Base = declarative_base()
 
 

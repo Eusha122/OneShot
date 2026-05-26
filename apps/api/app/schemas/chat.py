@@ -23,6 +23,7 @@ class ChatRequest(BaseModel):
     learning_mode: LearningMode = "visual_mode"
     conversation_id: int | None = None
     history: list[ChatMessage] = Field(default_factory=list)
+    active_document_ids: list[int] | None = None
 
 
 class VisualBlock(BaseModel):

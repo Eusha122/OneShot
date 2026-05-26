@@ -1,10 +1,10 @@
 import React, { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { ArrowUp, Atom, ChevronRight, Menu, Mic, Paperclip, PenTool, Plus, Search, Sigma } from "lucide-react";
+import { ArrowUp, Atom, CheckCircle, ChevronRight, Loader, Menu, Mic, Paperclip, PenTool, Plus, Search, Sigma, Upload, X } from "lucide-react";
 import { AssistantMarkdown } from "../features/chat/AssistantMarkdown";
 import { VisualBlockRenderer } from "../features/visual-blocks/VisualBlockRenderer";
 import type { LearningVisualBlock } from "../features/visual-blocks/visualBlockTypes";
-import { streamChatMessage, getConversations, getConversation, createConversation, createLearnerProfile, type Conversation } from "../lib/chatApi";
+import { streamChatMessage, getConversations, getConversation, createConversation, createLearnerProfile, uploadDocument, getDocumentStatus, type Conversation } from "../lib/chatApi";
 
 type LearningMode =
   | "explain_simply"
@@ -14,12 +14,20 @@ type LearningMode =
   | "fast_revision"
   | "challenge_me";
 
+export interface ActiveDocument {
+  id: number;
+  filename: string;
+  status: "uploading" | "processing" | "ready" | "failed";
+  uploadedAt: number;
+}
+
 interface Message {
   id: string;
   role: "user" | "assistant";
   content: string;
   mode?: LearningMode;
   visualBlocks?: LearningVisualBlock[];
+  attachments?: ActiveDocument[];
 }
 
 const modes: { id: LearningMode; label: string }[] = [
@@ -30,8 +38,6 @@ const modes: { id: LearningMode; label: string }[] = [
   { id: "fast_revision", label: "Fast Revision" },
   { id: "challenge_me", label: "Challenge Me" },
 ];
-
-const pipelineItems = ["Searching physics book", "Preparing visual block", "Generating explanation"];
 
 export function App() {
   const [sidebarOpen, setSidebarOpen] = useState(true);
@@ -53,11 +59,50 @@ export function App() {
   const skipFetchRef = useRef(false);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const isGeneratingRef = useRef(false);
+  const mainScrollRef = useRef<HTMLElement | null>(null);
+
+  const [activeDocuments, setActiveDocuments] = useState<ActiveDocument[]>(() => {
+    const stored = localStorage.getItem(`oneshot_docs_${activeConversationId || "new"}`);
+    return stored ? JSON.parse(stored) : [];
+  });
+  const activeDocumentsRef = useRef<ActiveDocument[]>(activeDocuments);
+
+  useEffect(() => {
+    activeDocumentsRef.current = activeDocuments;
+  }, [activeDocuments]);
+  const [activePipelineStages, setActivePipelineStages] = useState<string[]>([]);
+
+  // Sync when conversation changes
+  useEffect(() => {
+    const stored = localStorage.getItem(`oneshot_docs_${activeConversationId || "new"}`);
+    setActiveDocuments(stored ? JSON.parse(stored) : []);
+  }, [activeConversationId]);
+
+  // Persist to localStorage
+  useEffect(() => {
+    localStorage.setItem(`oneshot_docs_${activeConversationId || "new"}`, JSON.stringify(activeDocuments));
+  }, [activeDocuments, activeConversationId]);
 
   // Keep the ref in sync with state
   useEffect(() => {
     isGeneratingRef.current = isGenerating;
   }, [isGenerating]);
+
+  // Auto-scroll logic
+  useEffect(() => {
+    const scrollElement = mainScrollRef.current;
+    if (!scrollElement) return;
+    
+    // ONLY auto-scroll if near bottom (e.g., within 200px)
+    const isNearBottom = scrollElement.scrollHeight - scrollElement.scrollTop - scrollElement.clientHeight < 200;
+    
+    if (isNearBottom) {
+      scrollElement.scrollTo({
+        behavior: "smooth",
+        top: scrollElement.scrollHeight,
+      });
+    }
+  }, [messages, isGenerating]);
 
   useEffect(() => {
     if (learnerId) {
@@ -106,9 +151,69 @@ export function App() {
     textarea.style.height = `${Math.min(textarea.scrollHeight, 180)}px`;
   }
 
+  async function handleFileUpload(file: File) {
+    if (!file.name.toLowerCase().endsWith(".pdf")) {
+      alert("Only PDF files are supported");
+      return;
+    }
+
+    const tempId = Date.now();
+    setActiveDocuments(prev => [...prev, { id: tempId, filename: file.name, status: "uploading", uploadedAt: Date.now() }]);
+
+    try {
+      const result = await uploadDocument(file, learnerId);
+
+      if (result.duplicate) {
+        setActiveDocuments(prev => prev.map(d => d.id === tempId ? { ...d, id: result.document_id, status: "ready" } : d));
+        return;
+      }
+
+      setActiveDocuments(prev => prev.map(d => d.id === tempId ? { ...d, id: result.document_id, status: "processing" } : d));
+
+      // Poll for ingestion completion
+      const docId = result.document_id;
+      let attempts = 0;
+      const maxAttempts = 30;
+      const poll = setInterval(async () => {
+        attempts++;
+        try {
+          const status = await getDocumentStatus(docId);
+          if (status.status === "ready") {
+            clearInterval(poll);
+            setActiveDocuments(prev => prev.map(d => d.id === docId ? { ...d, status: "ready" } : d));
+          } else if (status.status === "failed") {
+            clearInterval(poll);
+            setActiveDocuments(prev => prev.map(d => d.id === docId ? { ...d, status: "failed" } : d));
+          } else if (attempts >= maxAttempts) {
+            clearInterval(poll);
+            setActiveDocuments(prev => prev.map(d => d.id === docId ? { ...d, status: "ready" } : d));
+          }
+        } catch {
+          if (attempts >= maxAttempts) {
+            clearInterval(poll);
+            setActiveDocuments(prev => prev.map(d => d.id === docId ? { ...d, status: "ready" } : d));
+          }
+        }
+      }, 2000);
+    } catch (err) {
+      setActiveDocuments(prev => prev.map(d => d.id === tempId ? { ...d, status: "failed" } : d));
+    }
+  }
+
+  function removeDocument(id: number) {
+    setActiveDocuments(prev => prev.filter(d => d.id !== id));
+  }
+
   async function submitMessage(explicitContent?: string) {
     const content = (typeof explicitContent === "string" ? explicitContent : draft).trim();
     if (!content || isGenerating) return;
+
+    const currentActiveDocs = activeDocumentsRef.current;
+    const hasProcessingDocs = currentActiveDocs.some(d => d.status === "uploading" || d.status === "processing");
+    if (hasProcessingDocs) {
+      alert("Please wait until document processing finishes.");
+      return;
+    }
 
     let currentConversationId = activeConversationId;
     if (!currentConversationId) {
@@ -125,11 +230,14 @@ export function App() {
        }
     }
 
+    const finalActiveDocs = activeDocumentsRef.current;
+
     const userMessage: Message = {
       id: crypto.randomUUID(),
       role: "user",
       content,
       mode: selectedMode,
+      attachments: finalActiveDocs,
     };
     const history = messages.map((message) => ({
       role: message.role || "user",
@@ -138,6 +246,11 @@ export function App() {
 
     setDraft("");
     setIsGenerating(true);
+    setActivePipelineStages([]);
+    
+    // Clear active documents from the composer after sending so they "go with the message"
+    setActiveDocuments([]);
+    
     requestAnimationFrame(() => {
       if (textareaRef.current) textareaRef.current.style.height = "48px";
     });
@@ -157,12 +270,27 @@ export function App() {
       ];
     });
 
+    const previousAttachmentIds = messages.flatMap(m => m.attachments || []).filter(d => d.status === "ready").map(d => d.id);
+    const currentAttachmentIds = finalActiveDocs.filter(d => d.status === "ready").map(d => d.id);
+    const activeDocumentIds = Array.from(new Set([...previousAttachmentIds, ...currentAttachmentIds]));
+    
+    console.log("ACTIVE DOCS", finalActiveDocs);
+    console.log("ACTIVE DOC IDS", activeDocumentIds);
+    console.log("REQUEST PAYLOAD", {
+        history,
+        learningMode: selectedMode,
+        message: content,
+        conversationId: currentConversationId,
+        activeDocumentIds
+    });
+
     try {
       await streamChatMessage({
         history,
         learningMode: selectedMode,
         message: content,
         conversationId: currentConversationId,
+        activeDocumentIds,
         onEvent: (event) => {
           if (event.type === "meta") {
             const validBlocks = Array.isArray(event.visual_blocks) ? event.visual_blocks.filter(Boolean) : [];
@@ -182,6 +310,14 @@ export function App() {
                   : message,
               ),
             );
+            return;
+          }
+
+          if (event.type === "pipeline") {
+            setActivePipelineStages(prev => {
+              if (prev.includes(event.label)) return prev;
+              return [...prev, event.label];
+            });
             return;
           }
 
@@ -253,8 +389,8 @@ export function App() {
           </aside>
         )}
 
-        <section className="flex min-w-0 flex-1 flex-col">
-          <header className="h-14 border-b border-[#1f1f1f] bg-[#0a0a0a] px-3">
+        <section ref={mainScrollRef} className="flex min-w-0 flex-1 flex-col overflow-y-auto relative">
+          <header className="sticky top-0 z-20 h-14 shrink-0 border-b border-[#1f1f1f] bg-[#0a0a0a]/90 backdrop-blur-md px-3">
             <div className="flex h-full items-center gap-2">
               <p className="text-sm font-medium text-[#f5f5f5]">OneShot</p>
             </div>
@@ -269,24 +405,26 @@ export function App() {
               submitMessage(p);
             }} 
           />
+
+          <Composer
+            draft={draft}
+            modes={modes}
+            pipelineItems={activePipelineStages}
+            isGenerating={isGenerating}
+            selectedMode={selectedMode}
+            textareaRef={textareaRef}
+            activeDocuments={activeDocuments}
+            onFileUpload={handleFileUpload}
+            onRemoveDocument={removeDocument}
+            onDraftChange={(value) => {
+              setDraft(value);
+              requestAnimationFrame(resizeTextarea);
+            }}
+            onModeChange={setSelectedMode}
+            onSubmit={submitMessage}
+          />
         </section>
       </div>
-
-      <Composer
-        sidebarOffsetClass={sidebarOffsetClass}
-        draft={draft}
-        modes={modes}
-        pipelineItems={pipelineItems}
-        isGenerating={isGenerating}
-        selectedMode={selectedMode}
-        textareaRef={textareaRef}
-        onDraftChange={(value) => {
-          setDraft(value);
-          requestAnimationFrame(resizeTextarea);
-        }}
-        onModeChange={setSelectedMode}
-        onSubmit={submitMessage}
-      />
     </main>
   );
 }
@@ -562,21 +700,10 @@ function SidebarButton({
 }
 
 function ConversationWorkspace({ isGenerating, messages, draft, onSelectPrompt }: { isGenerating: boolean; messages: Message[]; draft: string; onSelectPrompt: (p: string) => void }) {
-  const scrollRef = useRef<HTMLDivElement | null>(null);
-
-  useEffect(() => {
-    const scrollElement = scrollRef.current;
-    if (!scrollElement) return;
-    scrollElement.scrollTo({
-      behavior: "smooth",
-      top: scrollElement.scrollHeight,
-    });
-  }, [messages]);
-
   const showEmptyState = messages.length === 0 && draft.trim().length === 0;
 
   return (
-    <div ref={scrollRef} className="pretty-scroll flex min-h-0 flex-1 flex-col overflow-y-auto px-4 pb-[200px] pt-8 sm:px-6 sm:pt-10">
+    <div className="flex flex-1 flex-col px-4 pt-8 pb-4 sm:px-6 sm:pt-10">
       <AnimatePresence mode="wait">
         {showEmptyState ? (
           <EmptyState key="empty-state" onSelectPrompt={onSelectPrompt} />
@@ -655,6 +782,16 @@ function ChatBubble({ isStreaming, message }: { isStreaming: boolean; message: M
           isUser ? "rounded-2xl bg-[#1a1a1a] px-4 py-3" : ""
         }`}
       >
+        {isUser && message.attachments && message.attachments.length > 0 && (
+          <div className="mb-2 flex flex-wrap gap-2">
+            {message.attachments.map(doc => (
+              <div key={doc.id} className="flex items-center gap-1.5 rounded bg-white/10 px-2 py-1 text-xs font-medium text-[#d1d5db]">
+                <Paperclip size={12} className="text-[#9ca3af]" />
+                <span className="max-w-[150px] truncate">{doc.filename}</span>
+              </div>
+            ))}
+          </div>
+        )}
         <SafeMessageContent message={message} isUser={isUser} isStreaming={isStreaming} />
       </div>
     </motion.article>
@@ -713,33 +850,49 @@ function ThinkingState() {
 }
 
 function Composer({
-  sidebarOffsetClass,
   draft,
   modes,
   pipelineItems,
   isGenerating,
   selectedMode,
   textareaRef,
+  activeDocuments,
+  onFileUpload,
+  onRemoveDocument,
   onDraftChange,
   onModeChange,
   onSubmit,
 }: {
-  sidebarOffsetClass: string;
   draft: string;
   modes: { id: LearningMode; label: string }[];
   pipelineItems: string[];
   isGenerating: boolean;
   selectedMode: LearningMode;
   textareaRef: React.MutableRefObject<HTMLTextAreaElement | null>;
+  activeDocuments: ActiveDocument[];
+  onFileUpload: (file: File) => void;
+  onRemoveDocument: (id: number) => void;
   onDraftChange: (value: string) => void;
   onModeChange: (mode: LearningMode) => void;
   onSubmit: (explicitContent?: string) => void;
 }) {
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  const handleAttachClick = () => {
+    fileInputRef.current?.click();
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      onFileUpload(file);
+    }
+    e.target.value = "";
+  };
+
   return (
-    <footer
-      className={`pointer-events-none fixed bottom-0 left-0 right-0 z-30 bg-gradient-to-t from-[#0a0a0a] via-[#0a0a0a]/90 to-transparent px-4 pb-6 pt-10 sm:px-6 ${sidebarOffsetClass}`}
-    >
-      <div className="pointer-events-auto mx-auto max-w-3xl">
+    <footer className="sticky bottom-0 z-30 shrink-0 bg-gradient-to-t from-[#0a0a0a] via-[#0a0a0a]/95 to-[#0a0a0a]/80 backdrop-blur-md px-4 pb-6 pt-4 sm:px-6">
+      <div className="mx-auto max-w-3xl">
         <div className="mb-3 flex gap-1.5 overflow-x-auto pb-1">
           {modes.map((mode) => (
             <button
@@ -757,7 +910,7 @@ function Composer({
           ))}
         </div>
 
-        {isGenerating ? (
+        {isGenerating && pipelineItems.length > 0 ? (
           <div className="mb-3 flex flex-col gap-0.5 px-2 text-[13px] text-[#9ca3af]">
             {pipelineItems.map((item) => (
               <motion.span 
@@ -765,18 +918,52 @@ function Composer({
                 animate={{ opacity: 1, y: 0 }} 
                 key={item}
               >
-                {item}...
+                {item}
               </motion.span>
             ))}
           </div>
         ) : null}
 
+        {/* Attached Documents Area */}
+        {activeDocuments.length > 0 && (
+          <div className="mb-3 flex flex-col gap-2">
+            <p className="px-2 text-[11px] font-medium uppercase tracking-wider text-[#9ca3af]">
+              Attached Documents
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {activeDocuments.map(doc => (
+                <div key={doc.id} className="flex items-center gap-2 rounded-lg border border-white/10 bg-[#1a1a1a] px-3 py-1.5 text-[13px] text-[#f5f5f5]">
+                  <Paperclip size={14} className="text-[#9ca3af]" />
+                  <span className="max-w-[150px] truncate">{doc.filename}</span>
+                  {doc.status === "uploading" && <Upload size={14} className="animate-pulse text-amber-400" />}
+                  {doc.status === "processing" && <Loader size={14} className="animate-spin text-amber-400" />}
+                  {doc.status === "ready" && <CheckCircle size={14} className="text-emerald-400" />}
+                  {doc.status === "failed" && <X size={14} className="text-red-400" />}
+                  <button onClick={() => onRemoveDocument(doc.id)} className="ml-1 rounded-full p-0.5 hover:bg-white/10 text-[#9ca3af] hover:text-white transition-colors">
+                    <X size={14} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         <div className="group relative rounded-[32px] border border-white/10 bg-[#171717]/80 p-2 shadow-[0_0_40px_rgba(0,0,0,0.3),inset_0_1px_0_rgba(255,255,255,0.05)] backdrop-blur-xl transition-all focus-within:border-white/20 focus-within:bg-[#1a1a1a]/90 focus-within:shadow-[0_0_50px_rgba(255,255,255,0.03),inset_0_1px_0_rgba(255,255,255,0.08)]">
           <div className="flex items-end gap-2">
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".pdf,application/pdf"
+              onChange={handleFileChange}
+              className="hidden"
+              aria-hidden="true"
+            />
+
             <button
               type="button"
-              aria-label="Attach learning material"
-              className="mb-1 grid h-10 w-10 shrink-0 place-items-center rounded-full bg-white/0 text-[#9ca3af] transition-all hover:bg-white/10 hover:text-white active:scale-95"
+              aria-label="Attach learning material (PDF)"
+              onClick={handleAttachClick}
+              className="mb-1 grid h-10 w-10 shrink-0 place-items-center rounded-full bg-white/0 transition-all hover:bg-white/10 hover:text-white active:scale-95 text-[#9ca3af]"
             >
               <Paperclip size={18} />
             </button>
@@ -809,7 +996,7 @@ function Composer({
               aria-label="Send message"
               onClick={() => onSubmit()}
               className="mb-1 grid h-10 w-10 shrink-0 place-items-center rounded-full bg-white text-black transition-all hover:scale-105 hover:bg-[#f0f0f0] active:scale-95 disabled:pointer-events-none disabled:bg-white/10 disabled:text-white/30"
-              disabled={!draft.trim() || isGenerating}
+              disabled={!draft.trim() || isGenerating || activeDocuments.some(d => d.status === "uploading" || d.status === "processing")}
             >
               <ArrowUp size={18} strokeWidth={2.5} />
             </button>

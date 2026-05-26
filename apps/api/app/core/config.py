@@ -12,6 +12,10 @@ class Settings(BaseSettings):
     web_origin: str = "http://localhost:5173"
     ollama_base_url: str = "http://localhost:11434"
     ollama_model: str = "qwen2.5:3b"
+    environment: str = "development"
+    debug: bool = False
+    rag_similarity_threshold: float = 0.35
+    rag_debug: bool = False
     database_url: str = f"sqlite+aiosqlite:///{BASE_DIR}/oneshot.db"
     chroma_host: str = "localhost"
     chroma_port: int = 8001

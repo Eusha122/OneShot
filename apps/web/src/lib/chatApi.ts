@@ -52,10 +52,64 @@ export type ChatStreamEvent =
       content: string;
     }
   | {
+      type: "pipeline";
+      stage: string;
+      label: string;
+    }
+  | {
+      type: "citation";
+      chunk_id: string;
+      source: string;
+      page: number;
+      score: number;
+    }
+  | {
       type: "done";
     };
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:8000";
+
+export interface UploadResponse {
+  document_id: number;
+  status: string;
+  duplicate?: boolean;
+}
+
+export interface DocumentStatusResponse {
+  document_id: number;
+  status: string;
+}
+
+export async function uploadDocument(
+  file: File,
+  learnerId?: number | null
+): Promise<UploadResponse> {
+  const formData = new FormData();
+  formData.append("file", file);
+  formData.append("source_type", "uploaded_notes");
+  formData.append("trust_level", "variable");
+  if (learnerId) {
+    formData.append("learner_id", String(learnerId));
+  }
+
+  const response = await fetch(`${API_BASE_URL}/api/documents/upload`, {
+    method: "POST",
+    body: formData,
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => null);
+    throw new Error(errorData?.detail || `Upload failed with status ${response.status}`);
+  }
+
+  return response.json();
+}
+
+export async function getDocumentStatus(documentId: number): Promise<DocumentStatusResponse> {
+  const response = await fetch(`${API_BASE_URL}/api/documents/${documentId}/status`);
+  if (!response.ok) throw new Error("Failed to fetch document status");
+  return response.json();
+}
 
 export async function getConversations(learnerId: number): Promise<Conversation[]> {
   const response = await fetch(`${API_BASE_URL}/api/conversations/?learner_id=${learnerId}`);
@@ -100,11 +154,13 @@ export async function sendChatMessage({
   learningMode,
   message,
   conversationId,
+  activeDocumentIds,
 }: {
   history: ChatHistoryMessage[];
   learningMode: LearningMode;
   message: string;
   conversationId?: number;
+  activeDocumentIds?: number[];
 }) {
   const response = await fetch(`${API_BASE_URL}/api/chat/message`, {
     body: JSON.stringify({
@@ -112,6 +168,7 @@ export async function sendChatMessage({
       learning_mode: learningMode,
       message,
       conversation_id: conversationId,
+      active_document_ids: activeDocumentIds,
     }),
     headers: {
       "Content-Type": "application/json",
@@ -132,12 +189,14 @@ export async function streamChatMessage({
   learningMode,
   message,
   conversationId,
+  activeDocumentIds,
   onEvent,
 }: {
   history: ChatHistoryMessage[];
   learningMode: LearningMode;
   message: string;
   conversationId?: number;
+  activeDocumentIds?: number[];
   onEvent: (event: ChatStreamEvent) => void;
 }) {
   const response = await fetch(`${API_BASE_URL}/api/chat/stream`, {
@@ -146,6 +205,7 @@ export async function streamChatMessage({
       learning_mode: learningMode,
       message,
       conversation_id: conversationId,
+      active_document_ids: activeDocumentIds,
     }),
     headers: {
       "Content-Type": "application/json",
@@ -159,6 +219,7 @@ export async function streamChatMessage({
       learningMode,
       message,
       conversationId,
+      activeDocumentIds,
     });
 
     onEvent({

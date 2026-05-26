@@ -8,6 +8,7 @@ class RAGQueryRequest(BaseModel):
 
 class RAGQueryResult(BaseModel):
     content: str
+    preview_content: str
     score: float
     chapter: str
     topic: str
@@ -16,3 +17,5 @@ class RAGQueryResult(BaseModel):
     source: str
     trust_level: str
     source_type: str
+    chunk_id: str
+    document_id: Optional[int] = None
