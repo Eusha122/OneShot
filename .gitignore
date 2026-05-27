@@ -1,17 +1,76 @@
+# =========================
+# Node / Frontend
+# =========================
 node_modules/
 dist/
 .vite/
+*.tsbuildinfo
+
+# =========================
+# Environment Variables
+# =========================
 .env
 .env.*
 !.env.example
+
+# =========================
+# Python
+# =========================
 __pycache__/
 *.py[cod]
 .pytest_cache/
 .ruff_cache/
 .mypy_cache/
+
+# Virtual Environments
 .venv/
-*.tsbuildinfo
+.venv311/
+venv/
+
+# =========================
+# Uploads / OCR / Vector DB
+# =========================
 uploads/
 chroma_data/
 postgres_data/
+
+# SQLite / Local Databases
+*.db
+*.sqlite
+*.sqlite3
+
+# =========================
+# AI / ML Cache
+# =========================
+.paddlex/
+.cache/
+models/
+hf_cache/
+
+# =========================
+# OS Files
+# =========================
+.DS_Store
+Thumbs.db
+
+# =========================
+# VSCode / IDE
+# =========================
+.vscode/
+.idea/
+
+# =========================
+# Logs
+# =========================
+*.log
+
+# =========================
+# Temp Files
+# =========================
+tmp/
+temp/
+
+# =========================
+# Personal Notes
+# =========================
 production tasks.md

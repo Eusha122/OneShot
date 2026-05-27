@@ -3,6 +3,7 @@ import time
 from typing import List, Dict, Any, Optional
 from collections import OrderedDict
 import json
+import re
 
 from app.services.rag.embeddings import embeddings_engine
 from app.adapters.chroma_store import chroma_store
@@ -14,6 +15,21 @@ class HybridRetriever:
     def __init__(self, max_cache_size: int = 100):
         self._cache: OrderedDict = OrderedDict()
         self.max_cache_size = max_cache_size
+
+    def _detect_query_subject(self, query: str) -> Optional[str]:
+        """Heuristic to detect subject from user query."""
+        q = query.lower()
+        if any(w in q for w in ["physics", "newton", "force", "motion", "gravity", "velocity", "acceleration", "projectile", "kinetic"]):
+            return "physics"
+        if any(w in q for w in ["chemistry", "atom", "molecule", "reaction", "acid", "base", "ph", "periodic"]):
+            return "chemistry"
+        if any(w in q for w in ["biology", "cell", "dna", "mitosis", "meiosis", "plant", "animal", "tissue"]):
+            return "biology"
+        if any(w in q for w in ["ict", "computer", "html", "internet", "software", "hardware", "network"]):
+            return "ict"
+        if any(w in q for w in ["math", "algebra", "geometry", "calculus", "equation", "quadratic", "integral"]):
+            return "math"
+        return None
 
     def _get_cache_key(self, query: str, filters: Dict[str, Any]) -> str:
         # Create a deterministic cache key from query and filters
@@ -48,27 +64,47 @@ class HybridRetriever:
         chroma_filter = self._build_chroma_filter(filters)
         
         fallback_used = False
+        is_global_search = not chroma_filter and not filters.get("document_ids")
+        
         if chroma_filter and "document_ids" in filters:
             logger.info("[RETRIEVER] document-scoped retrieval enabled")
-        
-        # Try with metadata filters
-        raw_results = chroma_store.query_chunks(
-            query_embeddings=[query_embedding],
-            filters=chroma_filter,
-            n_results=top_k * 3 # Retrieve more for reranking
-        )
-
-        # Fallback to semantic-only if metadata filtering yields no results
-        if not raw_results or not raw_results['documents'] or not raw_results['documents'][0]:
-            if chroma_filter:
+            
+        # Curriculum-first retrieval logic for global searches
+        if is_global_search:
+            # Try finding official textbook chunks first
+            curr_filter = {"source_type": {"$eq": "ssc_textbook"}}
+            raw_results = chroma_store.query_chunks(
+                query_embeddings=[query_embedding],
+                filters=curr_filter,
+                n_results=top_k * 3
+            )
+            # If not enough results, fall back to global
+            if not raw_results or not raw_results['documents'] or not raw_results['documents'][0]:
                 fallback_used = True
-                if settings.rag_debug:
-                    logger.info(f"[RAG_DEBUG] Metadata filter yielded empty results. Activating semantic fallback.")
                 raw_results = chroma_store.query_chunks(
                     query_embeddings=[query_embedding],
                     filters=None,
                     n_results=top_k * 3
                 )
+        else:
+            # Document-scoped or filtered search
+            raw_results = chroma_store.query_chunks(
+                query_embeddings=[query_embedding],
+                filters=chroma_filter,
+                n_results=top_k * 3 # Retrieve more for reranking
+            )
+    
+            # Fallback to semantic-only if metadata filtering yields no results
+            if not raw_results or not raw_results['documents'] or not raw_results['documents'][0]:
+                if chroma_filter:
+                    fallback_used = True
+                    if settings.rag_debug:
+                        logger.info(f"[RAG_DEBUG] Metadata filter yielded empty results. Activating semantic fallback.")
+                    raw_results = chroma_store.query_chunks(
+                        query_embeddings=[query_embedding],
+                        filters=None,
+                        n_results=top_k * 3
+                    )
         
         search_time = time.perf_counter() - search_start
 
@@ -87,6 +123,8 @@ class HybridRetriever:
         # 3. Trust-Aware Reranking & Score Normalization
         rerank_start = time.perf_counter()
         scored_chunks = []
+        detected_subject = self._detect_query_subject(query)
+        
         for i in range(len(chunks)):
             # Convert Chroma distance to similarity score
             # Cosine distance ranges from 0 to 2, so similarity is max(0, 1 - distance)
@@ -94,10 +132,10 @@ class HybridRetriever:
             meta = metadatas[i]
             
             # Apply trust boosts and penalties
-            final_score = self._apply_trust_modifiers(similarity, meta, filters)
+            final_score = self._apply_trust_modifiers(similarity, meta, filters, detected_subject)
             
             # Apply Similarity Threshold (Bypass if document-scoped search)
-            if not filters.get("document_ids") and final_score < settings.rag_similarity_threshold:
+            if not filters.get("document_ids") and final_score < 0.05:
                 continue
 
             content = chunks[i]
@@ -121,6 +159,16 @@ class HybridRetriever:
         # 4. Sort by final score descending and limit to top_k
         scored_chunks.sort(key=lambda x: x["score"], reverse=True)
         final_results = scored_chunks[:top_k]
+        
+        print(f"[DEBUG] Retrieved chunks: {len(final_results)}")
+        for r in final_results[:3]:
+            print(f"[DEBUG] Score: {r['score']}")
+            print(f"[DEBUG] Preview: {r['preview_content'][:300]}")
+        
+        print(f"[DEBUG] Retrieved chunks: {len(final_results)}")
+        for r in final_results[:3]:
+            print(f"[DEBUG] Score: {r['score']}")
+            print(f"[DEBUG] Preview: {r['preview_content'][:300]}")
         
         logger.info(f"[RETRIEVER] retrieved_chunks={len(final_results)}")
         if final_results:
@@ -177,23 +225,26 @@ class HybridRetriever:
             
         return {"$and": conditions}
 
-    def _apply_trust_modifiers(self, base_score: float, meta: Dict[str, Any], filters: Dict[str, Any]) -> float:
+    def _apply_trust_modifiers(self, base_score: float, meta: Dict[str, Any], filters: Dict[str, Any], detected_subject: Optional[str] = None) -> float:
         """
         Boosts or penalizes the semantic similarity score based on trust rules.
         """
         score = base_score
         trust_level = meta.get("trust_level", "variable")
         source_type = meta.get("source_type", "unknown")
+        chunk_subject = meta.get("subject", "").lower() if meta.get("subject") else ""
         
         # Boosts
         if trust_level == "high":
-            score += 0.05
+            score += 0.10
         if source_type in ["ssc_textbook", "board_question"]:
-            score += 0.05
+            score += 0.10
+        if detected_subject and chunk_subject and detected_subject in chunk_subject:
+            score += 0.08
             
         # Penalties
         if trust_level == "variable":
-            score -= 0.05
+            score -= 0.08
         if source_type in ["uploaded_notes", "internet"]:
             score -= 0.05
             

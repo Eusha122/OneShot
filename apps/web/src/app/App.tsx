@@ -877,6 +877,7 @@ function Composer({
   onSubmit: (explicitContent?: string) => void;
 }) {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const [isDragging, setIsDragging] = useState(false);
 
   const handleAttachClick = () => {
     fileInputRef.current?.click();
@@ -888,6 +889,27 @@ function Composer({
       onFileUpload(file);
     }
     e.target.value = "";
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+      const file = e.dataTransfer.files[0];
+      if (file.type === "application/pdf" || file.name.endsWith(".pdf")) {
+        onFileUpload(file);
+      }
+    }
   };
 
   return (
@@ -948,7 +970,12 @@ function Composer({
           </div>
         )}
 
-        <div className="group relative rounded-[32px] border border-white/10 bg-[#171717]/80 p-2 shadow-[0_0_40px_rgba(0,0,0,0.3),inset_0_1px_0_rgba(255,255,255,0.05)] backdrop-blur-xl transition-all focus-within:border-white/20 focus-within:bg-[#1a1a1a]/90 focus-within:shadow-[0_0_50px_rgba(255,255,255,0.03),inset_0_1px_0_rgba(255,255,255,0.08)]">
+        <div 
+          className={`group relative rounded-[32px] border ${isDragging ? 'border-amber-400/50 bg-[#1a1a1a]' : 'border-white/10 bg-[#171717]/80'} p-2 shadow-[0_0_40px_rgba(0,0,0,0.3),inset_0_1px_0_rgba(255,255,255,0.05)] backdrop-blur-xl transition-all focus-within:border-white/20 focus-within:bg-[#1a1a1a]/90 focus-within:shadow-[0_0_50px_rgba(255,255,255,0.03),inset_0_1px_0_rgba(255,255,255,0.08)]`}
+          onDragOver={handleDragOver}
+          onDragLeave={handleDragLeave}
+          onDrop={handleDrop}
+        >
           <div className="flex items-end gap-2">
             <input
               ref={fileInputRef}

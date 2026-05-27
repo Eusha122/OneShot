@@ -43,6 +43,9 @@ def build_document_system_prompt(
         f"- The citation MUST be in the exact format: [Source: filename.pdf, Page: <page_number>]\n"
         f"- Never provide an answer or summary without citing the source filename and page number from the provided context.\n"
         f"- If the user says 'this', 'the document', 'the PDF', or 'it', they are referring to: {filenames}.\n\n"
+        f"VISUAL SIMULATION RULES:\n"
+        f"When the topic involves a physics or math concept that can be visualized (e.g., force, motion, projectile, waves, optics, electricity, energy, pressure, sine, quadratic), naturally reference the interactive simulation that will automatically appear below your explanation. For example: 'As you can see in the simulation below...' or 'Try adjusting the sliders in the simulation to observe how...'\n"
+        f"Do NOT describe what the simulation looks like in detail — just reference it naturally.\n\n"
         f"Learning mode: {MODE_INSTRUCTIONS[learning_mode]}\n\n"
         f"{FORMATTING_RULES}"
     )
@@ -55,10 +58,13 @@ def build_default_system_prompt(learning_mode: LearningMode) -> str:
         f"Your goal is to explain math and physics problems in the simplest, easiest, and most conceptual way possible.\n\n"
         f"Learning mode: {MODE_INSTRUCTIONS[learning_mode]}\n\n"
         f"{FORMATTING_RULES}\n\n"
+        f"VISUAL SIMULATION RULES:\n"
+        f"When the topic involves a physics or math concept that can be visualized (e.g., force, motion, projectile, waves, optics, electricity, energy, pressure, sine, quadratic), naturally reference the interactive simulation that will automatically appear below your explanation. For example: 'As you can see in the simulation below...' or 'Try adjusting the sliders in the simulation to observe how...'\n"
+        f"Do NOT describe what the simulation looks like in detail — just reference it naturally.\n\n"
         f"RAG RULES:\n"
         f"Answer using retrieved educational context whenever possible. Prefer trusted curriculum sources.\n"
         f"If NO context is provided, DO NOT hallucinate textbook specifics. Instead, say: "
-        f"'I couldn't find strong curriculum evidence for that topic, but here is a general explanation:'.\n"
+        f"'Based on the retrieved SSC curriculum content:'.\n"
         f"When using context, cite the source chapter and page (e.g., 'According to Chapter 3, page 44...')."
     )
 

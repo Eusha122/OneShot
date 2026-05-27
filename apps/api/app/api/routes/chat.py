@@ -97,8 +97,12 @@ async def create_chat_message(
                 "newton_second_law": ("physics.forceMotion", {}),
                 "projectile_motion": ("physics.projectile", {}),
                 "quadratic_equation": ("math.quadraticGraph", {}),
-                "geometry_triangle": ("math.triangleGeometry", {}),
-                "probability": ("math.probabilitySim", {}),
+                "waves": ("physics.engineLab", {"scenario": "waves"}),
+                "optics": ("physics.engineLab", {"scenario": "optics"}),
+                "electricity": ("physics.engineLab", {"scenario": "electricity"}),
+                "energy": ("physics.engineLab", {"scenario": "energy"}),
+                "pressure": ("physics.engineLab", {"scenario": "pressure"}),
+                "sine_cosine": ("math.sineGraph", {}),
                 "kinematics": ("physics.engineLab", {"scenario": "kinematics"}),
                 "momentum": ("physics.engineLab", {"scenario": "force"})
             }
@@ -205,8 +209,12 @@ async def stream_chat_message(
                     "newton_second_law": ("physics.forceMotion", {}),
                     "projectile_motion": ("physics.projectile", {}),
                     "quadratic_equation": ("math.quadraticGraph", {}),
-                    "geometry_triangle": ("math.triangleGeometry", {}),
-                    "probability": ("math.probabilitySim", {}),
+                    "waves": ("physics.engineLab", {"scenario": "waves"}),
+                    "optics": ("physics.engineLab", {"scenario": "optics"}),
+                    "electricity": ("physics.engineLab", {"scenario": "electricity"}),
+                    "energy": ("physics.engineLab", {"scenario": "energy"}),
+                    "pressure": ("physics.engineLab", {"scenario": "pressure"}),
+                    "sine_cosine": ("math.sineGraph", {}),
                     "kinematics": ("physics.engineLab", {"scenario": "kinematics"}),
                     "momentum": ("physics.engineLab", {"scenario": "force"})
                 }

@@ -21,15 +21,39 @@ CONCEPT_MAPPINGS = [
         "weight": 0.25
     },
     {
-        "concept_id": "geometry_triangle",
-        "subject": "math",
-        "keywords": ["triangle", "angle", "hypotenuse", "pythagoras", "side lengths", "degrees"],
+        "concept_id": "waves",
+        "subject": "physics",
+        "keywords": ["wave", "sound", "frequency", "wavelength", "echo", "velocity"],
         "weight": 0.25
     },
     {
-        "concept_id": "probability",
+        "concept_id": "optics",
+        "subject": "physics",
+        "keywords": ["lens", "mirror", "focal length", "magnification", "refractive index", "critical angle"],
+        "weight": 0.25
+    },
+    {
+        "concept_id": "electricity",
+        "subject": "physics",
+        "keywords": ["ohm", "current", "electric", "voltage", "resistance", "power"],
+        "weight": 0.25
+    },
+    {
+        "concept_id": "energy",
+        "subject": "physics",
+        "keywords": ["energy", "work", "power", "kinetic", "potential"],
+        "weight": 0.25
+    },
+    {
+        "concept_id": "pressure",
+        "subject": "physics",
+        "keywords": ["pressure", "liquid", "density", "buoyancy", "pascal", "archimedes"],
+        "weight": 0.25
+    },
+    {
+        "concept_id": "sine_cosine",
         "subject": "math",
-        "keywords": ["probability", "coin", "dice", "toss", "roll", "chance", "frequency"],
+        "keywords": ["sine", "cosine", "sin", "cos", "wave", "amplitude", "frequency", "phase"],
         "weight": 0.25
     },
     {

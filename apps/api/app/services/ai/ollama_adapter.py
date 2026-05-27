@@ -24,7 +24,7 @@ class OllamaAdapter:
         system_prompt: str | None = None,
         temperature: float = 0.7,
     ) -> str:
-        async with httpx.AsyncClient(timeout=90) as client:
+        async with httpx.AsyncClient(timeout=180) as client:
             response = await client.post(
                 f"{self.base_url}/api/chat",
                 json={
