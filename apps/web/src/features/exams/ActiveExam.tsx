@@ -32,6 +32,54 @@ export function ActiveExam({ questions, onFinish }: ActiveExamProps) {
   const [vizRetries, setVizRetries] = useState<Record<string, number>>({});
   const [showWhiteboard, setShowWhiteboard] = useState(false);
   const [isWhiteboardFullscreen, setIsWhiteboardFullscreen] = useState(false);
+  
+  // Resizable Split Pane
+  const [leftWidth, setLeftWidth] = useState(() => {
+    const saved = localStorage.getItem("exam_split_ratio");
+    return saved ? parseFloat(saved) : 55;
+  });
+  const [isResizing, setIsResizing] = useState(false);
+  const resizeRaf = React.useRef<number | null>(null);
+
+  const handlePointerDown = (e: React.PointerEvent) => {
+    setIsResizing(true);
+    document.body.style.userSelect = "none";
+    document.body.style.cursor = "col-resize";
+  };
+
+  const handlePointerMove = React.useCallback((e: PointerEvent) => {
+    if (!isResizing) return;
+    
+    if (resizeRaf.current) cancelAnimationFrame(resizeRaf.current);
+    
+    resizeRaf.current = requestAnimationFrame(() => {
+      const percentage = (e.clientX / window.innerWidth) * 100;
+      // Clamp between 30% and 70%
+      const clamped = Math.max(30, Math.min(70, percentage));
+      setLeftWidth(clamped);
+    });
+  }, [isResizing]);
+
+  const handlePointerUp = React.useCallback(() => {
+    if (isResizing) {
+      setIsResizing(false);
+      document.body.style.userSelect = "";
+      document.body.style.cursor = "";
+      localStorage.setItem("exam_split_ratio", leftWidth.toString());
+    }
+  }, [isResizing, leftWidth]);
+
+  React.useEffect(() => {
+    if (isResizing) {
+      window.addEventListener("pointermove", handlePointerMove);
+      window.addEventListener("pointerup", handlePointerUp);
+    }
+    return () => {
+      window.removeEventListener("pointermove", handlePointerMove);
+      window.removeEventListener("pointerup", handlePointerUp);
+      if (resizeRaf.current) cancelAnimationFrame(resizeRaf.current);
+    };
+  }, [isResizing, handlePointerMove, handlePointerUp]);
 
   const MAX_VIZ_RETRIES = 2;
 
@@ -136,11 +184,15 @@ export function ActiveExam({ questions, onFinish }: ActiveExamProps) {
   };
 
   return (
-    <div className="flex h-full w-full overflow-hidden bg-black">
+    <div className="flex h-full w-full overflow-hidden bg-black relative">
       {/* Left Pane: Exam Questions */}
-      <div className={`flex flex-col h-full overflow-y-auto p-6 transition-all duration-300 ${
-        showWhiteboard ? 'w-1/2 border-r border-[#2a2a2a]' : 'w-full'
-      }`}>
+      <div 
+        className="flex flex-col h-full overflow-y-auto p-6 transition-all"
+        style={{ 
+          width: showWhiteboard ? `${leftWidth}%` : '100%',
+          transition: isResizing ? 'none' : 'width 300ms cubic-bezier(0.4, 0, 0.2, 1)'
+        }}
+      >
         <div className="mx-auto w-full max-w-3xl space-y-8 pb-32">
           <div className="flex items-center justify-between border-b border-[#2a2a2a] pb-4">
             <h2 className="font-serif text-2xl font-light text-white">Active Exam</h2>
@@ -352,7 +404,7 @@ export function ActiveExam({ questions, onFinish }: ActiveExamProps) {
       {isComplete && (
         <div 
           className="fixed bottom-0 left-64 flex justify-center border-t border-[#2a2a2a] bg-[#0f0f0f]/80 p-6 backdrop-blur-md z-20 transition-all duration-300"
-          style={{ right: showWhiteboard ? '50%' : 0 }}
+          style={{ right: showWhiteboard ? `${100 - leftWidth}%` : 0 }}
         >
           <button
             onClick={() => onFinish(calculateScore(), answers, evaluations)}
@@ -365,9 +417,29 @@ export function ActiveExam({ questions, onFinish }: ActiveExamProps) {
       )}
       </div>
 
+      {/* Resize Divider */}
+      {showWhiteboard && (
+        <div 
+          onPointerDown={handlePointerDown}
+          onDoubleClick={() => setLeftWidth(leftWidth > 45 && leftWidth < 55 ? 30 : 50)}
+          className="relative z-30 w-1 bg-[#1a1a1a] hover:bg-cyan-500 cursor-col-resize flex-shrink-0 transition-colors duration-150 group"
+        >
+          {/* Invisible larger hit area */}
+          <div className="absolute -left-2 -right-2 top-0 bottom-0" />
+          {/* Subtle glow on hover */}
+          <div className="absolute inset-y-0 left-1/2 -translate-x-1/2 w-[2px] bg-cyan-500 opacity-0 group-hover:opacity-100 shadow-[0_0_8px_rgba(6,182,212,0.8)] transition-opacity" />
+        </div>
+      )}
+
       {/* Right Pane: Whiteboard */}
       {showWhiteboard && (
-        <div className="w-1/2 h-full bg-[#050505] p-3 flex flex-col relative z-10 shadow-[-20px_0_40px_rgba(0,0,0,0.6)]">
+        <div 
+          className="h-full bg-[#050505] p-3 flex flex-col relative z-10 shadow-[-20px_0_40px_rgba(0,0,0,0.6)] transition-all"
+          style={{ 
+            width: `${100 - leftWidth}%`,
+            transition: isResizing ? 'none' : 'width 300ms cubic-bezier(0.4, 0, 0.2, 1)'
+          }}
+        >
           <WhiteboardPanel 
             onClose={() => setShowWhiteboard(false)} 
             isFullscreen={isWhiteboardFullscreen}
