@@ -184,7 +184,7 @@ export async function sendChatMessage({
   return (await response.json()) as ChatApiResponse;
 }
 
-export async function streamChatMessage({
+export function streamChatMessage({
   history,
   learningMode,
   message,
@@ -198,61 +198,48 @@ export async function streamChatMessage({
   conversationId?: number;
   activeDocumentIds?: number[];
   onEvent: (event: ChatStreamEvent) => void;
-}) {
-  const response = await fetch(`${API_BASE_URL}/api/chat/stream`, {
-    body: JSON.stringify({
-      history,
-      learning_mode: learningMode,
-      message,
-      conversation_id: conversationId,
-      active_document_ids: activeDocumentIds,
-    }),
-    headers: {
-      "Content-Type": "application/json",
-    },
-    method: "POST",
-  });
+}): Promise<void> {
+  return new Promise((resolve, reject) => {
+    try {
+      const wsUrl = API_BASE_URL.replace(/^http/, "ws") + "/api/chat/stream/ws";
+      const ws = new WebSocket(wsUrl);
 
-  if (!response.ok || !response.body) {
-    const fallbackResponse = await sendChatMessage({
-      history,
-      learningMode,
-      message,
-      conversationId,
-      activeDocumentIds,
-    });
+      ws.onopen = () => {
+        ws.send(
+          JSON.stringify({
+            history,
+            learning_mode: learningMode,
+            message,
+            conversation_id: conversationId,
+            active_document_ids: activeDocumentIds,
+          })
+        );
+      };
 
-    onEvent({
-      type: "meta",
-      model: fallbackResponse.model,
-      visual_blocks: fallbackResponse.visual_blocks,
-    });
-    onEvent({
-      type: "token",
-      content: fallbackResponse.content,
-    });
-    onEvent({
-      type: "done",
-    });
-    return;
-  }
+      ws.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data) as ChatStreamEvent;
+          onEvent(data);
+          
+          if (data.type === "done" || data.type === "error") {
+            ws.close();
+            resolve();
+          }
+        } catch (err) {
+          console.error("Failed to parse WS message", err);
+        }
+      };
 
-  const reader = response.body.getReader();
-  const decoder = new TextDecoder();
-  let buffer = "";
+      ws.onerror = (error) => {
+        console.error("WebSocket error:", error);
+        reject(error);
+      };
 
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-
-    buffer += decoder.decode(value, { stream: true });
-    const events = buffer.split("\n\n");
-    buffer = events.pop() ?? "";
-
-    for (const eventText of events) {
-      const dataLine = eventText.split("\n").find((line) => line.startsWith("data: "));
-      if (!dataLine) continue;
-      onEvent(JSON.parse(dataLine.slice(6)) as ChatStreamEvent);
+      ws.onclose = () => {
+        resolve();
+      };
+    } catch (e) {
+      reject(e);
     }
-  }
+  });
 }

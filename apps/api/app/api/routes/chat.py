@@ -2,7 +2,7 @@ import logging
 
 import httpx
 import json
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -160,6 +160,9 @@ async def stream_chat_message(
     logger.info(f"Stream request received with active_document_ids: {request.active_document_ids}")
 
     async def event_stream():
+        # Yield padding to bypass Windows AV/TCP strict SSE buffering
+        yield f": {' ' * 2048}\n\n"
+        
         yield f"data: {json.dumps({'type': 'meta', 'model': settings.ollama_model, 'visual_blocks': visual_blocks})}\n\n"
         
         rag_results = []
@@ -175,6 +178,7 @@ async def stream_chat_message(
             except Exception as e:
                 logger.error(f"Failed to fetch active document filenames: {e}")
         
+        import asyncio
         if not _is_simple_greeting(request.message):
             # Pipeline: Searching
             if request.active_document_ids:
@@ -182,12 +186,13 @@ async def stream_chat_message(
             else:
                 search_label = "Searching educational materials..."
             yield f"data: {json.dumps({'type': 'pipeline', 'stage': 'searching_textbook', 'label': search_label})}\n\n"
+            await asyncio.sleep(0) # Flush
             
             filters = {}
             if request.active_document_ids:
                 filters["document_ids"] = request.active_document_ids
 
-            rag_results = retriever.retrieve(query=request.message, filters=filters, top_k=3)
+            rag_results = await asyncio.to_thread(retriever.retrieve, query=request.message, filters=filters, top_k=3)
             context_text = "\n\n".join([f"Source: {r['source']} (Page {r['page']})\n{r['content'][:600]}{'...' if len(r['content']) > 600 else ''}" for r in rag_results])
             
             sources = list(set(r['source'] for r in rag_results))
@@ -196,11 +201,12 @@ async def stream_chat_message(
             # Optionally yield chunk citations here if needed for frontend UX
             for chunk in rag_results:
                 yield f"data: {json.dumps({'type': 'citation', 'chunk_id': chunk['chunk_id'], 'source': chunk['source'], 'page': chunk['page'], 'score': chunk['score']})}\n\n"
+                await asyncio.sleep(0) # Flush
         
         if not visual_blocks:
             from app.services.ai.concept_detector import detect_concept
             
-            concept = detect_concept(request.message, context_text)
+            concept = await asyncio.to_thread(detect_concept, request.message, context_text)
             if concept and concept["confidence"] > 0.7:
                 logger.info(f'[VISUAL] concept_detected={concept["concept_id"]} confidence={concept["confidence"]}')
                 cid = concept["concept_id"]
@@ -228,6 +234,7 @@ async def stream_chat_message(
                     })
                     # Re-emit meta if we added a block from RAG
                     yield f"data: {json.dumps({'type': 'meta', 'model': settings.ollama_model, 'visual_blocks': visual_blocks})}\n\n"
+                    await asyncio.sleep(0) # Flush
         
         system_prompt, user_prompt = build_tutor_prompt(
             request.message, 
@@ -238,15 +245,49 @@ async def stream_chat_message(
         
         # Pipeline: Generating
         yield f"data: {json.dumps({'type': 'pipeline', 'stage': 'generating_answer', 'label': 'Generating answer...'})}\n\n"
+        await asyncio.sleep(0) # Flush
         
         try:
             full_response = ""
+            # Simple state machine to filter out <think> blocks common in reasoning models
+            is_thinking = False
+            buffer_str = ""
+            
             async for line in adapter.stream(user_prompt, request.history, system_prompt=system_prompt, temperature=0.2):
                 payload = json.loads(line)
                 content = payload.get("message", {}).get("content", "")
                 if content:
-                    full_response += content
-                    yield f"data: {json.dumps({'type': 'token', 'content': content})}\n\n"
+                    buffer_str += content
+                    
+                    if not is_thinking:
+                        if "<think>" in buffer_str:
+                            is_thinking = True
+                            before = buffer_str.split("<think>")[0]
+                            if before:
+                                full_response += before
+                                yield f"data: {json.dumps({'type': 'token', 'content': before})}\n\n"
+                                await asyncio.sleep(0)
+                            buffer_str = ""
+                        elif len(buffer_str) > 10 or "\n" in buffer_str:
+                            full_response += buffer_str
+                            yield f"data: {json.dumps({'type': 'token', 'content': buffer_str})}\n\n"
+                            await asyncio.sleep(0)
+                            buffer_str = ""
+                    else:
+                        if "</think>" in buffer_str:
+                            is_thinking = False
+                            after = buffer_str.split("</think>")[-1]
+                            buffer_str = after
+                            if len(buffer_str) > 10 or "\n" in buffer_str:
+                                full_response += buffer_str
+                                yield f"data: {json.dumps({'type': 'token', 'content': buffer_str})}\n\n"
+                                await asyncio.sleep(0)
+                                buffer_str = ""
+
+            if buffer_str and not is_thinking:
+                full_response += buffer_str
+                yield f"data: {json.dumps({'type': 'token', 'content': buffer_str})}\n\n"
+                await asyncio.sleep(0)
                 if payload.get("done"):
                     if request.conversation_id:
                         repo = MessageRepository(session)
@@ -277,4 +318,155 @@ async def stream_chat_message(
         except httpx.HTTPError:
             yield f"data: {json.dumps({'type': 'error', 'content': 'Ollama is not reachable at the configured URL'})}\n\n"
 
-    return StreamingResponse(event_stream(), media_type="text/event-stream")
+    headers = {
+        "Cache-Control": "no-cache",
+        "Connection": "keep-alive",
+        "X-Accel-Buffering": "no"
+    }
+    return StreamingResponse(event_stream(), media_type="text/event-stream", headers=headers)
+
+@router.websocket("/stream/ws")
+async def websocket_chat_stream(
+    websocket: WebSocket,
+    session: AsyncSessionDep
+):
+    await websocket.accept()
+    try:
+        data = await websocket.receive_json()
+        request = ChatRequest(**data)
+        
+        adapter = OllamaAdapter()
+        visual_blocks = [block.model_dump() for block in infer_visual_blocks(request.message)]
+        logger.info(f"WS Stream request received with active_document_ids: {request.active_document_ids}")
+        await websocket.send_json({'type': 'meta', 'model': settings.ollama_model, 'visual_blocks': visual_blocks})
+        
+        rag_results = []
+        context_text = ""
+        active_filenames = []
+        
+        if request.active_document_ids:
+            try:
+                result = await session.execute(select(Document).where(Document.id.in_(request.active_document_ids)))
+                docs = result.scalars().all()
+                active_filenames = [doc.filename for doc in docs]
+            except Exception as e:
+                logger.error(f"Failed to fetch active document filenames: {e}")
+        
+        import asyncio
+        if not _is_simple_greeting(request.message):
+            search_label = "Searching attached documents..." if request.active_document_ids else "Searching educational materials..."
+            await websocket.send_json({'type': 'pipeline', 'stage': 'searching_textbook', 'label': search_label})
+            
+            filters = {}
+            if request.active_document_ids:
+                filters["document_ids"] = request.active_document_ids
+
+            rag_results = await asyncio.to_thread(retriever.retrieve, query=request.message, filters=filters, top_k=3)
+            context_text = "\n\n".join([f"Source: {r['source']} (Page {r['page']})\n{r['content'][:600]}{'...' if len(r['content']) > 600 else ''}" for r in rag_results])
+            
+            for chunk in rag_results:
+                await websocket.send_json({'type': 'citation', 'chunk_id': chunk['chunk_id'], 'source': chunk['source'], 'page': chunk['page'], 'score': chunk['score']})
+        
+        if not visual_blocks:
+            from app.services.ai.concept_detector import detect_concept
+            concept = await asyncio.to_thread(detect_concept, request.message, context_text)
+            if concept and concept["confidence"] > 0.7:
+                cid = concept["concept_id"]
+                mapping = {
+                    "newton_second_law": ("physics.forceMotion", {}),
+                    "projectile_motion": ("physics.projectile", {}),
+                    "quadratic_equation": ("math.quadraticGraph", {}),
+                    "waves": ("physics.engineLab", {"scenario": "waves"}),
+                    "optics": ("physics.engineLab", {"scenario": "optics"}),
+                    "electricity": ("physics.engineLab", {"scenario": "electricity"}),
+                    "energy": ("physics.engineLab", {"scenario": "energy"}),
+                    "pressure": ("physics.engineLab", {"scenario": "pressure"}),
+                    "sine_cosine": ("math.sineGraph", {}),
+                    "kinematics": ("physics.engineLab", {"scenario": "kinematics"}),
+                    "momentum": ("physics.engineLab", {"scenario": "force"})
+                }
+                
+                if cid in mapping:
+                    vtype, vparams = mapping[cid]
+                    visual_blocks.append({"id": f"rag-visual-{cid}", "type": vtype, "params": vparams})
+                    await websocket.send_json({'type': 'meta', 'model': settings.ollama_model, 'visual_blocks': visual_blocks})
+        
+        system_prompt, user_prompt = build_tutor_prompt(
+            request.message, 
+            request.learning_mode, 
+            context=context_text,
+            active_document_filenames=active_filenames
+        )
+        
+        await websocket.send_json({'type': 'pipeline', 'stage': 'generating_answer', 'label': 'Generating answer...'})
+        
+        full_response = ""
+        is_thinking = False
+        buffer_str = ""
+        
+        async for line in adapter.stream(user_prompt, request.history, system_prompt=system_prompt, temperature=0.2):
+            payload = json.loads(line)
+            content = payload.get("message", {}).get("content", "")
+            if content:
+                buffer_str += content
+                if not is_thinking:
+                    if "<think>" in buffer_str:
+                        is_thinking = True
+                        before = buffer_str.split("<think>")[0]
+                        if before:
+                            full_response += before
+                            await websocket.send_json({'type': 'token', 'content': before})
+                        buffer_str = ""
+                    elif len(buffer_str) > 10 or "\n" in buffer_str:
+                        full_response += buffer_str
+                        await websocket.send_json({'type': 'token', 'content': buffer_str})
+                        buffer_str = ""
+                else:
+                    if "</think>" in buffer_str:
+                        is_thinking = False
+                        after = buffer_str.split("</think>")[-1]
+                        buffer_str = after
+                        if len(buffer_str) > 10 or "\n" in buffer_str:
+                            full_response += buffer_str
+                            await websocket.send_json({'type': 'token', 'content': buffer_str})
+                            buffer_str = ""
+        
+        if buffer_str and not is_thinking:
+            full_response += buffer_str
+            await websocket.send_json({'type': 'token', 'content': buffer_str})
+            
+        if payload.get("done"):
+            if request.conversation_id:
+                repo = MessageRepository(session)
+                try:
+                    await repo.create(MessageCreate(
+                        conversation_id=request.conversation_id,
+                        role="user",
+                        content=request.message,
+                        mode=request.learning_mode
+                    ))
+                    await repo.create(MessageCreate(
+                        conversation_id=request.conversation_id,
+                        role="assistant",
+                        content=full_response,
+                        visual_blocks=visual_blocks,
+                        mode=request.learning_mode
+                    ))
+                    await session.commit()
+                except Exception:
+                    await session.rollback()
+                    logger.exception("WS stream persist failed")
+            await websocket.send_json({'type': 'done'})
+            
+    except WebSocketDisconnect:
+        logger.info("WebSocket disconnected")
+    except httpx.HTTPStatusError as exc:
+        await websocket.send_json({'type': 'error', 'content': f'Ollama returned {exc.response.status_code}'})
+    except httpx.HTTPError:
+        await websocket.send_json({'type': 'error', 'content': 'Ollama is not reachable'})
+    except Exception as e:
+        logger.exception("WS Error")
+        try:
+            await websocket.send_json({'type': 'error', 'content': str(e)})
+        except Exception:
+            pass
