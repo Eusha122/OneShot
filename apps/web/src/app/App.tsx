@@ -30,6 +30,8 @@ interface Message {
   attachments?: ActiveDocument[];
 }
 
+import { ExamWorkspace } from "../features/exams/ExamWorkspace";
+
 const modes: { id: LearningMode; label: string }[] = [
   { id: "explain_simply", label: "Explain Simply" },
   { id: "exam_mode", label: "Exam Mode" },
@@ -40,6 +42,7 @@ const modes: { id: LearningMode; label: string }[] = [
 ];
 
 export function App() {
+  const [activeView, setActiveView] = useState<"chat" | "whiteboard" | "exams">("chat");
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [selectedMode, setSelectedMode] = useState<LearningMode>("visual_mode");
   const [draft, setDraft] = useState("");
@@ -368,6 +371,8 @@ export function App() {
                 activeConversationId={activeConversationId}
                 onSelectConversation={setActiveConversationId}
                 onNewChat={() => setActiveConversationId(null)}
+                activeView={activeView}
+                setActiveView={setActiveView}
               />
             </motion.aside>
           )}
@@ -396,33 +401,74 @@ export function App() {
             </div>
           </header>
 
-          <ConversationWorkspace 
-            isGenerating={isGenerating} 
-            messages={messages} 
-            draft={draft}
-            onSelectPrompt={(p) => {
-              setDraft(p);
-              submitMessage(p);
-            }} 
-          />
-
-          <Composer
-            draft={draft}
-            modes={modes}
-            pipelineItems={activePipelineStages}
-            isGenerating={isGenerating}
-            selectedMode={selectedMode}
-            textareaRef={textareaRef}
-            activeDocuments={activeDocuments}
-            onFileUpload={handleFileUpload}
-            onRemoveDocument={removeDocument}
-            onDraftChange={(value) => {
-              setDraft(value);
-              requestAnimationFrame(resizeTextarea);
-            }}
-            onModeChange={setSelectedMode}
-            onSubmit={submitMessage}
-          />
+          {activeView === "exams" ? (
+            <div className="flex-1 overflow-y-auto">
+              <ExamWorkspace 
+                learnerId={learnerId === null ? undefined : learnerId} 
+                onFinishExam={(score, questions, answers, evaluations) => {
+                  setActiveView("chat");
+                  
+                  const mistakes = questions
+                    .filter(q => {
+                      const evalResult = evaluations?.[q.id];
+                      return evalResult && evalResult.partial_credit < 1.0;
+                    })
+                    .map(q => ({
+                      question: q.question,
+                      student_answer: answers[q.id],
+                      expected_answer: q.answer,
+                      evaluation_reason: evaluations?.[q.id]?.reason || "Incorrect"
+                    }));
+                    
+                  const summaryPayload = {
+                    event: "EXAM_COMPLETED",
+                    score: score,
+                    total: questions.length,
+                    topic: questions[0]?.type || "unknown topic",
+                    mistakes: mistakes
+                  };
+                  
+                  const prompt = `I just took a ${questions.length} question exam on ${questions[0]?.type || "topic"}.\nMy score: ${score}/${questions.length}.\n\nHere is my performance report:\n\`\`\`json\n${JSON.stringify(summaryPayload, null, 2)}\n\`\`\`\n\nPlease evaluate my performance, explain my specific mistakes, and adapt your future teaching to help me improve in my weak areas.`;
+                  
+                  setDraft(prompt);
+                  setTimeout(() => submitMessage(prompt), 100);
+                }} 
+              />
+            </div>
+          ) : activeView === "chat" ? (
+            <>
+              <ConversationWorkspace 
+                isGenerating={isGenerating} 
+                messages={messages} 
+                draft={draft}
+                onSelectPrompt={(p) => {
+                  setDraft(p);
+                  submitMessage(p);
+                }} 
+              />
+              <Composer
+                draft={draft}
+                modes={modes}
+                pipelineItems={activePipelineStages}
+                isGenerating={isGenerating}
+                selectedMode={selectedMode}
+                textareaRef={textareaRef}
+                activeDocuments={activeDocuments}
+                onFileUpload={handleFileUpload}
+                onRemoveDocument={removeDocument}
+                onDraftChange={(value) => {
+                  setDraft(value);
+                  requestAnimationFrame(resizeTextarea);
+                }}
+                onModeChange={setSelectedMode}
+                onSubmit={submitMessage}
+              />
+            </>
+          ) : (
+            <div className="flex-1 flex items-center justify-center text-gray-500">
+              Interactive Whiteboard coming soon...
+            </div>
+          )}
         </section>
       </div>
     </main>
@@ -601,13 +647,17 @@ function Sidebar({
   conversations, 
   activeConversationId,
   onSelectConversation,
-  onNewChat 
+  onNewChat,
+  activeView,
+  setActiveView
 }: { 
   onToggle: () => void;
   conversations: Conversation[];
   activeConversationId: number | null;
   onSelectConversation: (id: number) => void;
   onNewChat: () => void;
+  activeView: string;
+  setActiveView: (view: "chat" | "whiteboard" | "exams") => void;
 }) {
   return (
     <div className="flex h-full flex-col px-3 py-3">
@@ -638,9 +688,15 @@ function Sidebar({
       </label>
 
       <nav className="mt-4 space-y-1">
-        <SidebarButton icon={<PenTool size={16} />} label="Interactive Whiteboard" active />
-        <SidebarButton icon={<Atom size={16} />} label="Physics Challenges" />
-        <SidebarButton icon={<Sigma size={16} />} label="Math Challenges" />
+        <div onClick={() => setActiveView("chat")}>
+          <SidebarButton icon={<Search size={16} />} label="Chat" active={activeView === "chat"} />
+        </div>
+        <div onClick={() => setActiveView("whiteboard")}>
+          <SidebarButton icon={<PenTool size={16} />} label="Interactive Whiteboard" active={activeView === "whiteboard"} />
+        </div>
+        <div onClick={() => setActiveView("exams")}>
+          <SidebarButton icon={<CheckCircle size={16} />} label="Exams" active={activeView === "exams"} />
+        </div>
       </nav>
 
       <p className="mt-6 px-2 text-[11px] uppercase tracking-[0.16em] text-[#9ca3af]">Saved chats</p>

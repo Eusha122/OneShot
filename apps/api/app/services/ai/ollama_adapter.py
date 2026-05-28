@@ -8,7 +8,10 @@ DEFAULT_SYSTEM_PROMPT = (
     "problems in the simplest, easiest, and most conceptual way possible. Break down complex steps, "
     "use clean Markdown, short sections, bullet points, and LaTeX for formulas ($...$ for inline "
     "and $$...$$ for display). Always refer to the interactive animation or graph displayed below "
-    "the response so the student can experiment with the parameters (e.g. speed, force, coefficients)."
+    "the response so the student can experiment with the parameters. "
+    "If you want to provide a deeper derivation or explain *why* a certain law or formula works, "
+    "wrap that deep explanation in HTML details tags to keep the main answer clean. "
+    "Example:\n<details>\n<summary>Why is this true?</summary>\nBecause...\n</details>"
 )
 
 
@@ -23,19 +26,24 @@ class OllamaAdapter:
         history: list[ChatMessage],
         system_prompt: str | None = None,
         temperature: float = 0.7,
+        response_format: str | None = None,
     ) -> str:
         async with httpx.AsyncClient(timeout=180) as client:
+            payload = {
+                "model": self.model,
+                "messages": self._build_messages(prompt, history, system_prompt),
+                "stream": False,
+                "options": {
+                    "temperature": temperature,
+                    "num_ctx": 2048
+                },
+            }
+            if response_format:
+                payload["format"] = response_format
+
             response = await client.post(
                 f"{self.base_url}/api/chat",
-                json={
-                    "model": self.model,
-                    "messages": self._build_messages(prompt, history, system_prompt),
-                    "stream": False,
-                    "options": {
-                        "temperature": temperature,
-                        "num_ctx": 2048
-                    },
-                },
+                json=payload,
             )
             response.raise_for_status()
 

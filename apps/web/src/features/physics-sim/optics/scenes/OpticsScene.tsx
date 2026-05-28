@@ -6,6 +6,8 @@ import { RefractionBoundary } from "../objects/RefractionBoundary";
 import { OpticsGraphs } from "../graphs/OpticsGraphs";
 import { GraphGrid } from "../../shared/graph/GraphGrid";
 
+const MemoizedOpticsGraphs = React.memo(OpticsGraphs);
+
 export function OpticsScene({
   params,
   updateParam,
@@ -44,7 +46,7 @@ export function OpticsScene({
         * Visualizations are scaled representations for educational purposes.
       </div>
 
-      <OpticsGraphs params={params} formulaId={params.formulaId} />
+      <MemoizedOpticsGraphs params={params} formulaId={params.formulaId} />
     </div>
   );
 }

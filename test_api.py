@@ -1,18 +1,20 @@
-import urllib.request
+import httpx
+import asyncio
 import json
-import urllib.error
 
-req = urllib.request.Request(
-    'http://127.0.0.1:8000/api/learners/', 
-    data=json.dumps({'language_preference': 'en'}).encode('utf-8'), 
-    headers={'Content-Type': 'application/json'}, 
-    method='POST'
-)
+async def main():
+    async with httpx.AsyncClient(timeout=180.0) as client:
+        try:
+            res = await client.post("http://127.0.0.1:8000/api/exams/generate", json={
+                "subject": "Physics",
+                "topic": "Newton's laws",
+                "count": 2,
+                "type": "mcq"
+            })
+            print(f"Status: {res.status_code}")
+            print(json.dumps(res.json(), indent=2))
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
 
-try:
-    response = urllib.request.urlopen(req)
-    print("SUCCESS:")
-    print(response.read().decode('utf-8'))
-except urllib.error.HTTPError as e:
-    print(f"ERROR {e.code}:")
-    print(e.read().decode("utf-8"))
+asyncio.run(main())

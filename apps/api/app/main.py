@@ -9,6 +9,7 @@ from app.api.routes.learners import router as learners_router
 from app.api.routes.conversations import router as conversations_router
 from app.api.routes.documents import router as documents_router
 from app.api.routes.rag import router as rag_router
+from app.api.routes.exams import router as exams_router
 from app.core.config import settings
 from app.core.storage import init_storage
 from app.db.database import sessionmanager
@@ -44,6 +45,7 @@ def create_app() -> FastAPI:
     app.include_router(conversations_router, prefix="/api/conversations", tags=["conversations"])
     app.include_router(documents_router)
     app.include_router(rag_router)
+    app.include_router(exams_router, prefix="/api/exams", tags=["exams"])
     return app
 
 

@@ -70,10 +70,16 @@ CONCEPT_MAPPINGS = [
     }
 ]
 
-def detect_concept(query: str, context_text: str = "") -> Optional[Dict[str, Any]]:
+import json
+import logging
+from app.services.ai.ollama_adapter import OllamaAdapter
+
+logger = logging.getLogger(__name__)
+
+async def detect_concept(query: str, context_text: str = "") -> Optional[Dict[str, Any]]:
     """
     Analyzes user query and retrieved context to detect an educational concept.
-    Returns: {"concept_id": str, "confidence": float, "subject": str} or None
+    Returns: {"concept_id": str, "confidence": float, "subject": str, "extracted_params": dict} or None
     """
     text_to_analyze = f"{query} {context_text}".lower()
     
@@ -104,10 +110,43 @@ def detect_concept(query: str, context_text: str = "") -> Optional[Dict[str, Any
             best_concept = concept
             
     if best_concept and max_confidence > 0.3: # Minimum threshold to even return something
+        cid = best_concept["concept_id"]
+        extracted_params = {}
+        
+        # Try to dynamically extract parameters using the local LLM
+        try:
+            adapter = OllamaAdapter()
+            system_prompt = (
+                "You are a strict JSON parameter extractor. "
+                "Extract numerical physics/math parameters from the user's query that correspond to a simulation. "
+                "Only return valid JSON containing the parameters you found. Do not include units in the values, just numbers. "
+                "Example keys: 'speed', 'angleDegrees', 'mass', 'gravity', 'distance', 'voltage', 'force', 'friction'. "
+                "If no parameters are explicitly stated in the query, return {}."
+            )
+            response_text = await adapter.generate(
+                prompt=query,
+                history=[],
+                system_prompt=system_prompt,
+                temperature=0.0
+            )
+            
+            # Find the JSON block if the model added markdown fences
+            json_text = response_text
+            if "```json" in response_text:
+                json_text = response_text.split("```json")[1].split("```")[0]
+            elif "```" in response_text:
+                json_text = response_text.split("```")[1].split("```")[0]
+                
+            extracted_params = json.loads(json_text.strip())
+            logger.info(f"[CONCEPT DETECTOR] Extracted params: {extracted_params}")
+        except Exception as e:
+            logger.warning(f"Failed to extract JSON parameters: {e}")
+            
         return {
-            "concept_id": best_concept["concept_id"],
+            "concept_id": cid,
             "confidence": round(max_confidence, 2),
-            "subject": best_concept["subject"]
+            "subject": best_concept["subject"],
+            "extracted_params": extracted_params
         }
         
     return None

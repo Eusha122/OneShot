@@ -5,10 +5,9 @@ import { ForceVector } from "./ForceVector";
 
 interface GravityBodiesProps {
   state: ForceState;
-  time: number; // 0 to 1
 }
 
-export function GravityBodies({ state, time }: GravityBodiesProps) {
+export function GravityBodies({ state }: GravityBodiesProps) {
   if (!state.particles || state.particles.length < 2) return null;
 
   const [p1, p2] = state.particles;

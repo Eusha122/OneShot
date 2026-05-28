@@ -51,14 +51,21 @@ export function PhysicsEngineLab({
   const isExactFormulaMode = Boolean(selectedFormula);
 
   useEffect(() => {
+    // Prevent global React state updates for scenes that manage their own internal animation loops.
+    // This fixes a massive performance issue where the PC hangs due to useless 60fps global re-renders.
+    const selfAnimatingScenes = ["kinematics", "force", "waves", "optics", "electricity", "pressure"];
+    if (selfAnimatingScenes.includes(params.scenario)) {
+      return;
+    }
+
     let frameId = 0;
     const startedAt = performance.now();
-    const duration = params.scenario === "electricity" ? 2200 : 1800;
+    const duration = 1800;
 
     function animate(now: number) {
       const elapsed = (now - startedAt) / duration;
-      setProgress(params.scenario === "electricity" ? elapsed % 1 : Math.min(1, elapsed));
-      if (params.scenario === "electricity" || elapsed < 1) {
+      setProgress(Math.min(1, elapsed));
+      if (elapsed < 1) {
         frameId = requestAnimationFrame(animate);
       }
     }

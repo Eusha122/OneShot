@@ -1,12 +1,16 @@
-import React, { useEffect, useState, useRef } from "react";
+import React, { useRef, useMemo } from "react";
 import { Play, Pause, RotateCcw } from "lucide-react";
 import { formulaById, PhysicsLabParams } from "../../sscPhysicsEngine";
 import { calculateKinematics } from "../utils/calculateKinematics";
-import { ParticleObject } from "../objects/ParticleObject";
-import { VelocityVector } from "../objects/VelocityVector";
-import { AccelerationVector } from "../objects/AccelerationVector";
-import { MotionTrail } from "../objects/MotionTrail";
+import { ParticleObject, ParticleObjectRef } from "../objects/ParticleObject";
+import { VelocityVector, VelocityVectorRef } from "../objects/VelocityVector";
+import { AccelerationVector, AccelerationVectorRef } from "../objects/AccelerationVector";
+import { MotionTrail, MotionTrailRef } from "../objects/MotionTrail";
 import { KinematicsGraphs } from "../graphs/KinematicsGraphs";
+import { usePhysicsEngine } from "../../shared/usePhysicsEngine";
+
+// Memoize the graphs component so it only re-renders when the throttled time changes
+const MemoizedKinematicsGraphs = React.memo(KinematicsGraphs);
 
 interface KinematicsSceneProps {
   params: PhysicsLabParams;
@@ -20,52 +24,33 @@ export function KinematicsScene({ params, updateParam }: KinematicsSceneProps) {
   // Compute live mathematical state
   const state = calculateKinematics(formulaId, params as any);
 
-  // Playback state
-  const [isPlaying, setIsPlaying] = useState(false);
-  const [timeFrac, setTimeFrac] = useState(0); // 0 to 1
-  const animationRef = useRef<number | null>(null);
-  const lastTimeRef = useRef<number>(0);
+  const particleRef = useRef<ParticleObjectRef>(null);
+  const velocityRef = useRef<VelocityVectorRef>(null);
+  const accelRef = useRef<AccelerationVectorRef>(null);
+  const trailRef = useRef<MotionTrailRef>(null);
+  const timeOverlayRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    return () => {
-      if (animationRef.current !== null) cancelAnimationFrame(animationRef.current);
-    };
-  }, []);
-
-  function startAnimation() {
-    if (isPlaying) return;
-    setIsPlaying(true);
-    if (timeFrac >= 1) setTimeFrac(0);
-    lastTimeRef.current = performance.now();
-    
-    function animate(now: number) {
-      const dt = (now - lastTimeRef.current) / 1000;
-      lastTimeRef.current = now;
+  const {
+    isPlaying,
+    uiTimeFrac,
+    startAnimation,
+    stopAnimation,
+    resetAnimation,
+  } = usePhysicsEngine({
+    duration: state.t,
+    throttleMs: 100, // Update heavy UI at ~10 FPS
+    onUpdate: (timeFrac) => {
+      // Direct DOM updates at 60 FPS (zero React overhead)
+      if (particleRef.current) particleRef.current.updateTimeFrac(timeFrac);
+      if (velocityRef.current) velocityRef.current.updateTimeFrac(timeFrac);
+      if (accelRef.current) accelRef.current.updateTimeFrac(timeFrac);
+      if (trailRef.current) trailRef.current.updateTimeFrac(timeFrac);
       
-      setTimeFrac(prev => {
-        // Physical duration is state.t, we animate 1 real second = 1 physical second
-        const duration = Math.max(0.5, state.t);
-        const nextFrac = prev + dt / duration;
-        if (nextFrac >= 1) {
-          setIsPlaying(false);
-          return 1;
-        }
-        animationRef.current = requestAnimationFrame(animate);
-        return nextFrac;
-      });
+      if (timeOverlayRef.current) {
+        timeOverlayRef.current.textContent = `t = ${(timeFrac * state.t).toFixed(2)} s`;
+      }
     }
-    animationRef.current = requestAnimationFrame(animate);
-  }
-
-  function pauseAnimation() {
-    setIsPlaying(false);
-    if (animationRef.current !== null) cancelAnimationFrame(animationRef.current);
-  }
-
-  function resetAnimation() {
-    pauseAnimation();
-    setTimeFrac(0);
-  }
+  });
 
   // Formula Overlay string builder
   let formulaOverlay = "";
@@ -96,15 +81,15 @@ export function KinematicsScene({ params, updateParam }: KinematicsSceneProps) {
         </div>
 
         {/* Time Overlay */}
-        <div className="absolute top-3 right-3 bg-black/60 px-3 py-1.5 rounded font-mono text-sm border border-white/10 text-gray-300">
-          t = {(timeFrac * state.t).toFixed(2)} s
+        <div ref={timeOverlayRef} className="absolute top-3 right-3 bg-black/60 px-3 py-1.5 rounded font-mono text-sm border border-white/10 text-gray-300">
+          t = 0.00 s
         </div>
 
         <svg viewBox="0 0 640 220" className="relative h-full w-full drop-shadow-md">
-          <MotionTrail state={state} time={timeFrac} formulaId={formulaId} />
-          <VelocityVector state={state} time={timeFrac} formulaId={formulaId} />
-          <AccelerationVector state={state} time={timeFrac} formulaId={formulaId} />
-          <ParticleObject state={state} time={timeFrac} duration={state.t} formulaId={formulaId} />
+          <MotionTrail ref={trailRef} state={state} formulaId={formulaId} />
+          <VelocityVector ref={velocityRef} state={state} formulaId={formulaId} />
+          <AccelerationVector ref={accelRef} state={state} formulaId={formulaId} />
+          <ParticleObject ref={particleRef} state={state} duration={state.t} formulaId={formulaId} />
         </svg>
       </div>
 
@@ -153,7 +138,7 @@ export function KinematicsScene({ params, updateParam }: KinematicsSceneProps) {
 
       <div className="mt-4 flex items-center justify-end gap-3 border-t border-[#333] pt-4">
         <button
-          onClick={isPlaying ? pauseAnimation : startAnimation}
+          onClick={isPlaying ? stopAnimation : startAnimation}
           className="flex items-center gap-2 rounded bg-white px-4 py-2 text-sm font-semibold text-black transition-colors hover:bg-gray-200"
         >
           {isPlaying ? <Pause size={16} /> : <Play size={16} fill="currentColor" />}
@@ -169,7 +154,7 @@ export function KinematicsScene({ params, updateParam }: KinematicsSceneProps) {
       </div>
 
       <div className="mt-6 border-t border-[#333] pt-6">
-        <KinematicsGraphs state={state} time={timeFrac} formulaId={formulaId} />
+        <MemoizedKinematicsGraphs state={state} time={uiTimeFrac} formulaId={formulaId} />
       </div>
     </div>
   );

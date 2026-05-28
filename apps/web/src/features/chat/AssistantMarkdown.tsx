@@ -1,6 +1,7 @@
 import ReactMarkdown from "react-markdown";
 import rehypeHighlight from "rehype-highlight";
 import rehypeKatex from "rehype-katex";
+import rehypeRaw from "rehype-raw";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 
@@ -14,7 +15,7 @@ export function AssistantMarkdown({ content, isStreaming = false }: { content: s
     <div className="assistant-prose prose prose-invert max-w-none text-[15px] leading-7 text-[#f5f5f5] sm:text-base sm:leading-8">
       <ReactMarkdown
         remarkPlugins={[remarkGfm, remarkMath]}
-        rehypePlugins={[[rehypeKatex, { throwOnError: false, strict: false }], rehypeHighlight]}
+        rehypePlugins={[rehypeRaw, [rehypeKatex, { throwOnError: false, strict: false }], rehypeHighlight]}
         components={{
           a: ({ children, ...props }) => (
             <a
@@ -48,6 +49,25 @@ export function AssistantMarkdown({ content, isStreaming = false }: { content: s
             <div className="my-5 overflow-x-auto rounded-md border border-[#1f1f1f]">
               <table className="m-0 w-full min-w-[520px] border-collapse text-sm">{children}</table>
             </div>
+          ),
+          details: ({ children, ...props }) => (
+            <details
+              {...props}
+              className="group my-4 rounded-lg border border-[#2a2a2a] bg-[#111111] overflow-hidden"
+            >
+              <div className="px-4 pb-4 pt-2 text-[#d1d5db]">
+                {children}
+              </div>
+            </details>
+          ),
+          summary: ({ children, ...props }) => (
+            <summary
+              {...props}
+              className="cursor-pointer list-none bg-[#1a1a1a] px-4 py-3 font-medium text-[#f5f5f5] hover:bg-[#222222] transition-colors focus:outline-none flex items-center gap-2 group-open:border-b group-open:border-[#2a2a2a]"
+            >
+              <span className="text-blue-400 group-open:rotate-90 transition-transform">▶</span>
+              {children}
+            </summary>
           ),
         }}
       >

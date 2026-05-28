@@ -8,6 +8,7 @@ import {
   type ProjectileParams,
   type ProjectilePoint,
 } from "./projectileEngine";
+import { usePhysicsEngine } from "./shared/usePhysicsEngine";
 
 const viewport = {
   width: 640,
@@ -30,30 +31,24 @@ export function ProjectileSimulation({
   phase?: VisualBlockPhase;
 }) {
   const [params, setParams] = useState(initialParams);
-  const [progress, setProgress] = useState(1);
   const [replayId, setReplayId] = useState(0);
   const simulation = useMemo(() => calculateProjectileSimulation(params), [params]);
   const mappedPoints = useMemo(() => mapTrajectoryToViewport(simulation.points), [simulation.points]);
+  const { uiTimeFrac, startAnimation, resetAnimation } = usePhysicsEngine({
+    duration: 1.4,
+    throttleMs: 30, // Unused since we don't have heavy graph throttling needed, but uiTimeFrac is useful
+    onUpdate: (timeFrac) => {}
+  });
+
+  const progress = uiTimeFrac;
   const currentPoint = pointAtProgress(mappedPoints, progress);
   const visiblePath = buildPath(mappedPoints.slice(0, Math.max(2, Math.ceil(mappedPoints.length * progress))));
 
+  // Re-map usePhysicsEngine for replay behavior
   useEffect(() => {
-    let frameId = 0;
-    const durationMs = 1400;
-    const startedAt = performance.now();
-
-    function animate(now: number) {
-      const nextProgress = Math.min(1, (now - startedAt) / durationMs);
-      setProgress(nextProgress);
-      if (nextProgress < 1) {
-        frameId = requestAnimationFrame(animate);
-      }
-    }
-
-    setProgress(0);
-    frameId = requestAnimationFrame(animate);
-    return () => cancelAnimationFrame(frameId);
-  }, [replayId, params]);
+    resetAnimation();
+    startAnimation();
+  }, [replayId, params, startAnimation, resetAnimation]);
 
   function replay() {
     setReplayId((value) => value + 1);

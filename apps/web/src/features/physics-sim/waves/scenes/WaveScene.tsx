@@ -6,6 +6,9 @@ import { EchoSimulation } from "../objects/EchoSimulation";
 import { WaveGraphs } from "../graphs/WaveGraphs";
 import { PlaybackControls } from "../../shared/playback/PlaybackControls";
 import { GraphGrid } from "../../shared/graph/GraphGrid";
+import { usePhysicsEngine } from "../../shared/usePhysicsEngine";
+
+const MemoizedWaveGraphs = React.memo(WaveGraphs);
 
 export function WaveScene({
   params,
@@ -14,34 +17,25 @@ export function WaveScene({
   params: PhysicsLabParams;
   updateParam: <Key extends keyof PhysicsLabParams>(key: Key, value: PhysicsLabParams[Key]) => void;
 }) {
-  const [progress, setProgress] = useState(0);
-  const [isPlaying, setIsPlaying] = useState(true);
 
-  // We map progress 0->1 for visual loops. 
-  useEffect(() => {
-    if (!isPlaying) return;
-    
-    let frameId: number;
-    let lastTime = performance.now();
-    
-    // Animate based on the frequency to give a realistic sense of speed
-    // Higher frequency = faster animation
-    const speedFactor = params.frequency * 0.2; 
+  const sineRef = React.useRef<import("../objects/SineWave").SineWaveRef>(null);
+  const echoRef = React.useRef<import("../objects/EchoSimulation").EchoSimulationRef>(null);
 
-    const animate = (now: number) => {
-      const delta = (now - lastTime) / 1000;
-      lastTime = now;
-      
-      setProgress((p) => {
-        const next = p + delta * speedFactor;
-        return next % 1; // loop
-      });
-      frameId = requestAnimationFrame(animate);
-    };
-    
-    frameId = requestAnimationFrame(animate);
-    return () => cancelAnimationFrame(frameId);
-  }, [isPlaying, params.frequency]);
+  const {
+    isPlaying,
+    uiTimeFrac,
+    startAnimation,
+    stopAnimation,
+    resetAnimation,
+  } = usePhysicsEngine({
+    duration: 1, // continuous looping
+    throttleMs: 100,
+    onUpdate: (timeFrac) => {
+      // Direct DOM updates at 60 FPS
+      if (sineRef.current) sineRef.current.updateTimeFrac(timeFrac);
+      if (echoRef.current) echoRef.current.updateTimeFrac(timeFrac);
+    }
+  });
 
   const echoData = calculateEcho(params);
 
@@ -52,21 +46,21 @@ export function WaveScene({
           <GraphGrid />
           
           {params.formulaId === "echo-distance" ? (
-            <EchoSimulation params={params} progress={progress} velocity={echoData.velocity} />
+            <EchoSimulation ref={echoRef} params={params} velocity={echoData.velocity} />
           ) : (
-            <SineWave params={params} progress={progress} />
+            <SineWave ref={sineRef} params={params} />
           )}
         </svg>
       </div>
 
       <PlaybackControls 
         isPlaying={isPlaying}
-        startAnimation={() => setIsPlaying(true)}
-        pauseAnimation={() => setIsPlaying(false)}
-        resetAnimation={() => setProgress(0)}
+        startAnimation={startAnimation}
+        pauseAnimation={stopAnimation}
+        resetAnimation={resetAnimation}
       />
 
-      <WaveGraphs params={params} formulaId={params.formulaId} time={progress} />
+      <MemoizedWaveGraphs params={params} formulaId={params.formulaId} time={uiTimeFrac} />
     </div>
   );
 }

@@ -1,15 +1,18 @@
-import React, { useEffect, useState, useRef } from "react";
+import React, { useRef, useMemo } from "react";
 import { Play, Pause, RotateCcw } from "lucide-react";
 import { formulaById, PhysicsLabParams } from "../../sscPhysicsEngine";
 import { calculateForces } from "../utils/calculateForces";
 import { ForceGraphs } from "../graphs/ForceGraphs";
-import { MassBlock } from "../objects/MassBlock";
-import { CircularOrbit } from "../objects/CircularOrbit";
+import { MassBlock, MassBlockRef } from "../objects/MassBlock";
+import { CircularOrbit, CircularOrbitRef } from "../objects/CircularOrbit";
 import { GravityBodies } from "../objects/GravityBodies";
 import { Particle } from "../objects/Particle";
 import { ForceVector } from "../objects/ForceVector";
-import { CollisionEngine } from "../collision/CollisionEngine";
+import { CollisionEngine, CollisionEngineRef } from "../collision/CollisionEngine";
 import { calculateCollision } from "../collision/collisionMath";
+import { usePhysicsEngine } from "../../shared/usePhysicsEngine";
+
+const MemoizedForceGraphs = React.memo(ForceGraphs);
 
 interface ForceSceneProps {
   params: PhysicsLabParams;
@@ -23,50 +26,32 @@ export function ForceScene({ params, updateParam }: ForceSceneProps) {
   const state = calculateForces(formulaId, params as any);
   const collisionState = formulaId === "conservation" ? calculateCollision(params) : null;
 
-  const [isPlaying, setIsPlaying] = useState(false);
-  const [timeFrac, setTimeFrac] = useState(0); 
-  const animationRef = useRef<number | null>(null);
-  const lastTimeRef = useRef<number>(0);
-
-  useEffect(() => {
-    return () => {
-      if (animationRef.current !== null) cancelAnimationFrame(animationRef.current);
-    };
-  }, []);
-
-  function startAnimation() {
-    if (isPlaying) return;
-    setIsPlaying(true);
-    if (timeFrac >= 1) setTimeFrac(0);
-    lastTimeRef.current = performance.now();
-    
-    function animate(now: number) {
-      const dt = (now - lastTimeRef.current) / 1000;
-      lastTimeRef.current = now;
+  const massBlockRef = useRef<MassBlockRef>(null);
+  const collisionEngineRef = useRef<CollisionEngineRef>(null);
+  const circularOrbitRef = useRef<CircularOrbitRef>(null);
+  const momentumGroupRef = useRef<SVGGElement>(null);
+  
+  const {
+    isPlaying,
+    uiTimeFrac,
+    timeFracRef,
+    startAnimation,
+    stopAnimation,
+    resetAnimation,
+  } = usePhysicsEngine({
+    duration: state.time || 1,
+    throttleMs: 100, // Update heavy UI at ~10 FPS
+    onUpdate: (timeFrac) => {
+      // Direct DOM updates at 60 FPS
+      if (massBlockRef.current) massBlockRef.current.updateTimeFrac(timeFrac);
+      if (collisionEngineRef.current) collisionEngineRef.current.updateTimeFrac(timeFrac);
+      if (circularOrbitRef.current) circularOrbitRef.current.updateTimeFrac(timeFrac);
       
-      setTimeFrac(prev => {
-        const duration = Math.max(1, state.time || 1);
-        const nextFrac = prev + dt / duration;
-        if (nextFrac >= 1) {
-          setIsPlaying(false);
-          return 1;
-        }
-        animationRef.current = requestAnimationFrame(animate);
-        return nextFrac;
-      });
+      if (momentumGroupRef.current) {
+        momentumGroupRef.current.style.transform = `translate3d(${100 + timeFrac * 400}px, 128px, 0)`;
+      }
     }
-    animationRef.current = requestAnimationFrame(animate);
-  }
-
-  function pauseAnimation() {
-    setIsPlaying(false);
-    if (animationRef.current !== null) cancelAnimationFrame(animationRef.current);
-  }
-
-  function resetAnimation() {
-    pauseAnimation();
-    setTimeFrac(0);
-  }
+  });
 
   // Formula Overlay Builder
   let formulaOverlay = "";
@@ -114,25 +99,27 @@ export function ForceScene({ params, updateParam }: ForceSceneProps) {
             <g>
               {/* Simple momentum particle moving */}
               <line x1="40" y1="128" x2="600" y2="128" stroke="#374151" strokeWidth="2" strokeDasharray="5,5" />
-              <Particle particle={{ mass: state.mass || 1, velocity: state.velocity || 0, position: 0 }} x={100 + timeFrac * 400} y={128} />
-              <ForceVector x={100 + timeFrac * 400 + 20} y={128} magnitude={state.momentum || 0} direction="right" label={`p=${state.momentum?.toFixed(1)}`} color="#a855f7" scale={1.5} />
+              <g ref={momentumGroupRef} style={{ transform: `translate3d(100px, 128px, 0)` }}>
+                <Particle particle={{ mass: state.mass || 1, velocity: state.velocity || 0, position: 0 }} x={0} y={0} />
+                <ForceVector x={20} y={0} magnitude={state.momentum || 0} direction="right" label={`p=${state.momentum?.toFixed(1)}`} color="#a855f7" scale={1.5} />
+              </g>
             </g>
           )}
 
           {(formulaId === "newton-second-law" || formulaId === "impulse") && (
-            <MassBlock state={state} time={timeFrac} />
+            <MassBlock ref={massBlockRef} state={state} />
           )}
 
           {formulaId === "conservation" && collisionState && (
-            <CollisionEngine state={collisionState} time={timeFrac} />
+            <CollisionEngine ref={collisionEngineRef} state={collisionState} />
           )}
 
           {formulaId === "centripetal" && (
-            <CircularOrbit state={state} time={timeFrac} />
+            <CircularOrbit ref={circularOrbitRef} state={state} />
           )}
 
           {formulaId === "gravitational-force" && (
-            <GravityBodies state={state} time={timeFrac} />
+            <GravityBodies state={state} />
           )}
         </svg>
       </div>
@@ -189,7 +176,7 @@ export function ForceScene({ params, updateParam }: ForceSceneProps) {
 
       <div className="mt-4 flex items-center justify-end gap-3 border-t border-[#333] pt-4">
         <button
-          onClick={isPlaying ? pauseAnimation : startAnimation}
+          onClick={isPlaying ? stopAnimation : startAnimation}
           className="flex items-center gap-2 rounded bg-white px-4 py-2 text-sm font-semibold text-black transition-colors hover:bg-gray-200"
         >
           {isPlaying ? <Pause size={16} /> : <Play size={16} fill="currentColor" />}
@@ -205,7 +192,7 @@ export function ForceScene({ params, updateParam }: ForceSceneProps) {
       </div>
 
       <div className="mt-6 border-t border-[#333] pt-6">
-        <ForceGraphs state={state} time={timeFrac} formulaId={formulaId} />
+        <MemoizedForceGraphs state={state} time={uiTimeFrac} formulaId={formulaId} />
       </div>
     </div>
   );

@@ -18,7 +18,10 @@ FORMATTING_RULES = (
     "- Use $...$ for inline math and $$...$$ for display equations.\n"
     "- Use \\frac{a}{b} for fractions instead of a/b when writing math.\n"
     "- Do not use raw \\(...\\) or \\[...\\] delimiters.\n"
-    "- If you create an ASCII diagram, you MUST wrap it in ```text and ``` so it uses a monospace font."
+    "- If you create an ASCII diagram, you MUST wrap it in ```text and ``` so it uses a monospace font.\n"
+    "- If you want to provide a deeper derivation or explain *why* a certain law or formula works, "
+    "wrap that deep explanation in HTML details tags to keep the main answer clean. "
+    "Example:\n<details>\n<summary>Why is this true?</summary>\nBecause...\n</details>"
 )
 
 
@@ -51,11 +54,20 @@ def build_document_system_prompt(
     )
 
 
-def build_default_system_prompt(learning_mode: LearningMode) -> str:
+def build_default_system_prompt(learning_mode: LearningMode, learner_profile: dict = None) -> str:
     """System prompt used when NO documents are attached. General tutor mode."""
+    
+    adaptation = ""
+    if learner_profile:
+        weak_topics = learner_profile.get("weak_topics", [])
+        if weak_topics:
+            adaptation += f"ADAPTATION RULES:\nThe student struggles with: {', '.join(weak_topics)}. "
+            adaptation += "When explaining concepts related to these topics, be extra detailed, slow down, and provide step-by-step breakdowns.\n\n"
+
     return (
         f"You are OneShot, an interactive STEM tutor. "
         f"Your goal is to explain math and physics problems in the simplest, easiest, and most conceptual way possible.\n\n"
+        f"{adaptation}"
         f"Learning mode: {MODE_INSTRUCTIONS[learning_mode]}\n\n"
         f"{FORMATTING_RULES}\n\n"
         f"VISUAL SIMULATION RULES:\n"
@@ -76,6 +88,7 @@ def build_tutor_prompt(
     learning_mode: LearningMode,
     context: str = "",
     active_document_filenames: list[str] | None = None,
+    learner_profile: dict = None,
 ) -> tuple[str, str]:
     """
     Returns (system_prompt, user_prompt) as separate strings.
@@ -86,7 +99,7 @@ def build_tutor_prompt(
     if active_document_filenames:
         system_prompt = build_document_system_prompt(learning_mode, active_document_filenames)
     else:
-        system_prompt = build_default_system_prompt(learning_mode)
+        system_prompt = build_default_system_prompt(learning_mode, learner_profile)
 
     user_prompt = (
         f"--- RETRIEVED CONTEXT ---\n"

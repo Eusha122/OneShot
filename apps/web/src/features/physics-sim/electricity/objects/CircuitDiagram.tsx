@@ -1,39 +1,80 @@
-import React from "react";
+import React, { forwardRef, useImperativeHandle, useRef } from "react";
 import type { PhysicsLabParams } from "../../sscPhysicsEngine";
 
-export function CircuitDiagram({
-  params,
-  progress,
-  current,
-  resistance,
-}: {
+interface CircuitDiagramProps {
   params: PhysicsLabParams;
-  progress: number;
   current: number;
   resistance: number;
-}) {
+}
+
+export interface CircuitDiagramRef {
+  updateTimeFrac: (timeFrac: number) => void;
+}
+
+export const CircuitDiagram = forwardRef<CircuitDiagramRef, CircuitDiagramProps>(({
+  params,
+  current,
+  resistance,
+}, ref) => {
   const isSeries = params.formulaId === "series-resistance";
   const isParallel = params.formulaId === "parallel-resistance";
 
-  // Dots for electron flow (flowing from negative to positive, or conventional from + to -)
-  // Let's use conventional current from left(+) to right(-) for simplicity
-  const speed = current * 0.5; // Visual speed scales with current
-  const adjustedProgress = (progress * speed) % 1;
-  const dotPositions = [0, 0.25, 0.5, 0.75].map((offset) => (adjustedProgress + offset) % 1);
+  const numDots = 4;
+  const dotRefs = useRef<(SVGCircleElement | null)[]>([]);
 
   // Helper to map progress along a simple rectangular path
   const circuitPoint = (p: number) => {
-    // Top: 130 to 510 (length 380)
-    // Right: 78 to 214 (length 136)
-    // Bottom: 510 to 130 (length 380)
-    // Left: 214 to 78 (length 136)
-    const total = 380 + 136 + 380 + 136; // 1032
+    const total = 1032; // 380 + 136 + 380 + 136
     const d = p * total;
     if (d < 380) return { x: 130 + d, y: 78 };
     if (d < 380 + 136) return { x: 510, y: 78 + (d - 380) };
     if (d < 380 + 136 + 380) return { x: 510 - (d - 516), y: 214 };
     return { x: 130, y: 214 - (d - 896) };
   };
+
+  useImperativeHandle(ref, () => ({
+    updateTimeFrac: (timeFrac: number) => {
+      // timeFrac goes from 0 to 1 based on whatever duration the engine is using.
+      // But for a continuous circuit, we can just use it directly.
+      const speed = current * 0.5;
+      // Convert the 0-1 timeFrac into continuous looping progress
+      // (Since it resets to 0 every loop, we just use it directly as progress)
+      const adjustedProgress = (timeFrac * speed) % 1;
+      
+      const offsets = [0, 0.25, 0.5, 0.75];
+      for (let i = 0; i < numDots; i++) {
+        const circle = dotRefs.current[i];
+        if (!circle) continue;
+        
+        if (current === 0) {
+          circle.style.display = "none";
+          continue;
+        }
+        
+        circle.style.display = "";
+        const pos = (adjustedProgress + offsets[i]) % 1;
+        const point = circuitPoint(pos);
+        
+        circle.setAttribute("cx", String(point.x));
+        circle.setAttribute("cy", String(point.y));
+      }
+    }
+  }));
+
+  // Initial dummy dots
+  const initialDots = [];
+  for (let i = 0; i < numDots; i++) {
+    initialDots.push(
+      <circle 
+        key={i} 
+        ref={(el) => { dotRefs.current[i] = el; }} 
+        cx="-100" cy="-100" 
+        r="5" 
+        fill="#fcd34d" 
+        style={{ display: current > 0 ? "" : "none" }}
+      />
+    );
+  }
 
   return (
     <g>
@@ -84,10 +125,7 @@ export function CircuitDiagram({
       )}
 
       {/* Moving Charges (Current Flow) */}
-      {current > 0 && dotPositions.map((position, index) => {
-        const point = circuitPoint(position);
-        return <circle key={index} cx={point.x} cy={point.y} r="5" fill="#fcd34d" />;
-      })}
+      {initialDots}
 
       {/* Ammeter / Labels */}
       <circle cx="510" cy="146" r="16" fill="#1f2937" stroke="#60a5fa" strokeWidth="2" />
@@ -102,4 +140,4 @@ export function CircuitDiagram({
       </text>
     </g>
   );
-}
+});

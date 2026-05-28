@@ -111,6 +111,32 @@ export async function getDocumentStatus(documentId: number): Promise<DocumentSta
   return response.json();
 }
 
+export async function generateExam(config: any, learnerId?: number): Promise<any[]> {
+  const response = await fetch(`${API_BASE_URL}/api/exams/generate`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ ...config, learner_id: learnerId }),
+  });
+  if (!response.ok) {
+    const err = await response.json().catch(() => null);
+    throw new Error(err?.detail || "Failed to generate exam");
+  }
+  return response.json();
+}
+
+export async function evaluateAnswer(expectedAnswer: string, studentAnswer: string): Promise<{correct: boolean, partial_credit: number, reason: string}> {
+  const response = await fetch(`${API_BASE_URL}/api/exams/evaluate`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ expected_answer: expectedAnswer, student_answer: studentAnswer }),
+  });
+  if (!response.ok) {
+    const err = await response.json().catch(() => null);
+    throw new Error(err?.detail || "Failed to evaluate answer");
+  }
+  return response.json();
+}
+
 export async function getConversations(learnerId: number): Promise<Conversation[]> {
   const response = await fetch(`${API_BASE_URL}/api/conversations/?learner_id=${learnerId}`);
   if (!response.ok) throw new Error("Failed to fetch conversations");

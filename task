@@ -223,34 +223,33 @@ Acceptance criteria:
 - Internet answers show source trust clearly.
 - Local document sources remain preferred when available.
 
-### Task 14: Physics And Math Challenge Sections
+### Task 14: Adaptive Exam Engine
 
-- Add dedicated Physics Challenges and Math Challenges views.
-- Build interactive simulations:
-  - projectile motion,
-  - velocity challenge,
-  - force/vector experiment,
-  - graph puzzle,
-  - equation-solving visual challenge.
-- Reuse visual block rendering and replay systems.
-- Store progress events.
-
-Acceptance criteria:
-- Challenge sections match the premium dark design.
-- Simulations are smooth and interactive.
-- Progress can feed conversation memory and analytics later.
-
-### Task 15: Exam Engine
-
-- Add timed exams, MCQs, and written questions.
-- Add topic, difficulty, source, and trust metadata.
-- Add adaptive scoring based on accuracy, time taken, and repeated mistakes.
-- Support learning modes inside exam feedback, especially Exam Mode and Fast Revision.
+- Add "Exam" section to the UI (replacing old Physics/Math challenge buttons).
+- Build Exam Configuration UI:
+  - Select Subject (Phy, Chem, Bio, Math, Higher Math).
+  - Select Topic (specific chapter or full book).
+  - Select Number of Questions (default 5, adjustable).
+  - Select Question Type (MCQ, Written Answer, Fill in the blanks).
+- Add `POST /api/exams/generate` endpoint:
+  - First, try to query local RAG for the specified topic/subject.
+  - Fallback: If no RAG content is found, use SearxNG to search the web for questions/answers at the appropriate level.
+  - Use Ollama with structured output to generate the exact number of requested questions in JSON format.
+  - Return exam payload to frontend with a background loading animation.
+- Build Active Exam UI:
+  - Render questions one by one or in a list.
+  - Immediate red feedback for wrong answers.
+  - Strict mode: User cannot change the answer once submitted.
+- Build Exam Submission & Chat Handoff:
+  - "View Result" button automatically navigates the user to the Chat section.
+  - Chat section automatically evaluates the score, provides detailed feedback, corrects mistakes, and explains the concepts.
+  - Update `LearnerProfile` and `ConversationMemory` with the weak topics and mistakes identified during the exam for future AI adaptation.
 
 Acceptance criteria:
-- Student can take and submit an exam.
-- Backend stores results.
-- Feedback adapts to weak topics and exam mode.
+- User can configure and generate a custom exam.
+- AI dynamically fetches from RAG or Web and generates valid questions.
+- Submitting the exam seamlessly transitions into an AI tutor chat session evaluating the exact performance.
+- Profile is updated with performance metrics and weak topics.
 
 ### Task 16: Analytics And Handwriting
 
@@ -273,17 +272,28 @@ Acceptance criteria:
 
 Complete these first, one by one:
 
-1. Task 1: Project Foundation.
-2. Task 2: Premium Chat UI Shell.
-3. Task 3: Chat Persistence And Conversation Memory.
-4. Task 4: AI Runtime And Streaming Pipeline.
-5. Task 5: Learning Modes And Prompt Policy.
-6. Task 6: Embedded Visual Blocks With Confidence Trigger.
-7. Task 7: Progressive Visual Rendering.
-8. Task 8: Replay Explanation.
-9. Task 9: “Why?” Expansion Buttons.
+1. Task 1: Project Foundation. [x]
+2. Task 2: Premium Chat UI Shell. [x]
+3. Task 3: Chat Persistence And Conversation Memory. [x]
+4. Task 4: AI Runtime And Streaming Pipeline. [x]
+5. Task 5: Learning Modes And Prompt Policy. [x]
+6. Task 6: Embedded Visual Blocks With Confidence Trigger. [x]
+7. Task 7: Progressive Visual Rendering. [x]
+8. Task 8: Replay Explanation. [x]
+9. Task 9: “Why?” Expansion Buttons. [x]
+10. Task 10: RAG Document Ingestion. [x]
+11. Task 11: Embeddings, ChromaDB, and Source Trust. [x]
+12. Task 12: RAG-Powered Tutor Answers. [x]
 
-After these, the platform will already feel like a serious AI learning product before the full RAG pipeline lands.
+After these, the platform will already feel like a serious AI learning product.
+
+## Current Focus: Physics Simulation Performance Optimization
+- `[x]` 1. Create `usePhysicsEngine` global animation hook.
+- `[x]` 2. Refactor `KinematicsScene.tsx` & objects for ref-based animation.
+- `[x]` 3. Refactor `ForceScene.tsx` & objects for ref-based animation.
+- `[x]` 4. Refactor `WaveScene.tsx`, `OpticsScene.tsx`, `ElectricityScene.tsx` for ref-based animation.
+- `[x]` 5. Optimize `SimulationEngine.tsx` and `ProjectileSimulation.tsx`.
+- `[x]` 6. Throttle Graph components (`React.memo`, slow tick).
 
 ## Test Plan
 

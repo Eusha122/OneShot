@@ -206,7 +206,7 @@ async def stream_chat_message(
         if not visual_blocks:
             from app.services.ai.concept_detector import detect_concept
             
-            concept = await asyncio.to_thread(detect_concept, request.message, context_text)
+            concept = await detect_concept(request.message, context_text)
             if concept and concept["confidence"] > 0.7:
                 logger.info(f'[VISUAL] concept_detected={concept["concept_id"]} confidence={concept["confidence"]}')
                 cid = concept["concept_id"]
@@ -227,6 +227,9 @@ async def stream_chat_message(
                 
                 if cid in mapping:
                     vtype, vparams = mapping[cid]
+                    if "extracted_params" in concept and isinstance(concept["extracted_params"], dict):
+                        vparams.update(concept["extracted_params"])
+                        
                     visual_blocks.append({
                         "id": f"rag-visual-{cid}",
                         "type": vtype,
@@ -236,11 +239,36 @@ async def stream_chat_message(
                     yield f"data: {json.dumps({'type': 'meta', 'model': settings.ollama_model, 'visual_blocks': visual_blocks})}\n\n"
                     await asyncio.sleep(0) # Flush
         
+        learner_profile_dict = None
+        if request.conversation_id:
+            from app.db.models import Conversation, LearnerProfile
+            from sqlalchemy.orm import selectinload
+            
+            try:
+                conv_result = await session.execute(
+                    select(Conversation)
+                    .where(Conversation.id == request.conversation_id)
+                    .options(selectinload(Conversation.learner))
+                )
+                conv = conv_result.scalar_one_or_none()
+                if conv and conv.learner:
+                    learner_profile_dict = {
+                        "weak_topics": conv.learner.weak_topics or [],
+                        "performance_metrics": conv.learner.performance_metrics or {}
+                    }
+                    
+                    # If this is an exam evaluation, we can log it and potentially flag for profile update
+                    if "evaluate my performance" in request.message.lower() and "exam" in request.message.lower():
+                        logger.info(f"[EXAM] Triggering exam evaluation mode for learner {conv.learner.id}")
+            except Exception as e:
+                logger.error(f"Failed to fetch learner profile: {e}")
+        
         system_prompt, user_prompt = build_tutor_prompt(
             request.message, 
             request.learning_mode, 
             context=context_text,
-            active_document_filenames=active_filenames
+            active_document_filenames=active_filenames,
+            learner_profile=learner_profile_dict
         )
         
         # Pipeline: Generating
@@ -369,7 +397,7 @@ async def websocket_chat_stream(
         
         if not visual_blocks:
             from app.services.ai.concept_detector import detect_concept
-            concept = await asyncio.to_thread(detect_concept, request.message, context_text)
+            concept = await detect_concept(request.message, context_text)
             if concept and concept["confidence"] > 0.7:
                 cid = concept["concept_id"]
                 mapping = {
@@ -388,6 +416,9 @@ async def websocket_chat_stream(
                 
                 if cid in mapping:
                     vtype, vparams = mapping[cid]
+                    if "extracted_params" in concept and isinstance(concept["extracted_params"], dict):
+                        vparams.update(concept["extracted_params"])
+                        
                     visual_blocks.append({"id": f"rag-visual-{cid}", "type": vtype, "params": vparams})
                     await websocket.send_json({'type': 'meta', 'model': settings.ollama_model, 'visual_blocks': visual_blocks})
         

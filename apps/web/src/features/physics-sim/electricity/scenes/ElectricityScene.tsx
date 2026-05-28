@@ -6,6 +6,9 @@ import { FieldLines } from "../objects/FieldLines";
 import { ElectricityGraphs } from "../graphs/ElectricityGraphs";
 import { PlaybackControls } from "../../shared/playback/PlaybackControls";
 import { GraphGrid } from "../../shared/graph/GraphGrid";
+import { usePhysicsEngine } from "../../shared/usePhysicsEngine";
+
+const MemoizedElectricityGraphs = React.memo(ElectricityGraphs);
 
 export function ElectricityScene({
   params,
@@ -14,32 +17,25 @@ export function ElectricityScene({
   params: PhysicsLabParams;
   updateParam: <Key extends keyof PhysicsLabParams>(key: Key, value: PhysicsLabParams[Key]) => void;
 }) {
-  const [progress, setProgress] = useState(0);
-  const [isPlaying, setIsPlaying] = useState(true);
-
   const isField = ["coulombs-law", "electric-field"].includes(params.formulaId);
   const data = calculateElectricity(params);
+  
+  const circuitRef = React.useRef<import("../objects/CircuitDiagram").CircuitDiagramRef>(null);
 
-  useEffect(() => {
-    if (!isPlaying) return;
-    
-    let frameId: number;
-    let lastTime = performance.now();
-    
-    const animate = (now: number) => {
-      const delta = (now - lastTime) / 1000;
-      lastTime = now;
-      
-      setProgress((p) => {
-        // Time progresses normally
-        return p + delta;
-      });
-      frameId = requestAnimationFrame(animate);
-    };
-    
-    frameId = requestAnimationFrame(animate);
-    return () => cancelAnimationFrame(frameId);
-  }, [isPlaying]);
+  const {
+    isPlaying,
+    uiTimeFrac,
+    startAnimation,
+    stopAnimation,
+    resetAnimation,
+  } = usePhysicsEngine({
+    duration: 1, // Doesn't matter, we loop continuously
+    throttleMs: 100, // Update heavy UI at ~10 FPS
+    onUpdate: (timeFrac) => {
+      // Direct DOM updates at 60 FPS
+      if (circuitRef.current) circuitRef.current.updateTimeFrac(timeFrac);
+    }
+  });
 
   return (
     <div className="flex flex-col gap-4">
@@ -51,25 +47,25 @@ export function ElectricityScene({
           {isField ? (
             <FieldLines params={params} force={data.force} eField={data.eField} />
           ) : (
-            <CircuitDiagram params={params} progress={progress} current={data.current} resistance={data.resistance} />
+            <CircuitDiagram ref={circuitRef} params={params} current={data.current} resistance={data.resistance} />
           )}
         </svg>
       </div>
 
       <PlaybackControls 
         isPlaying={isPlaying}
-        startAnimation={() => setIsPlaying(true)}
-        pauseAnimation={() => setIsPlaying(false)}
-        resetAnimation={() => setProgress(0)}
+        startAnimation={startAnimation}
+        pauseAnimation={stopAnimation}
+        resetAnimation={resetAnimation}
       />
 
-      <ElectricityGraphs 
+      <MemoizedElectricityGraphs 
         params={params} 
         formulaId={params.formulaId} 
         current={data.current} 
         resistance={data.resistance} 
         power={data.power} 
-        time={progress} 
+        time={uiTimeFrac} 
       />
     </div>
   );

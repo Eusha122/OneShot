@@ -1,6 +1,7 @@
 import { useEffect, useState, useRef } from "react";
 import { Play, Pause, RotateCcw } from "lucide-react";
 import type { SimulationSchema, SimulationObject } from "./SimulationSchema";
+import { usePhysicsEngine } from "./shared/usePhysicsEngine";
 
 // -- Object Registry Implementations --
 // These would eventually be moved to their own files.
@@ -148,44 +149,23 @@ export function SimulationEngine({ schema }: { schema: SimulationSchema }) {
   });
 
   const [params, setParams] = useState<Record<string, number>>(initialParams);
-  const [isPlaying, setIsPlaying] = useState(false);
-  const [time, setTime] = useState(0);
-
-  const animationRef = useRef<number | null>(null);
-  const lastTimeRef = useRef<number>(0);
-
-  function stopAnimation() {
-    if (animationRef.current !== null) {
-      cancelAnimationFrame(animationRef.current);
-      animationRef.current = null;
-    }
-    setIsPlaying(false);
-  }
-
-  function startAnimation() {
-    if (isPlaying) return;
-    setIsPlaying(true);
-    lastTimeRef.current = performance.now();
-    
-    function animate(now: number) {
-      const dt = (now - lastTimeRef.current) / 1000;
-      lastTimeRef.current = now;
-      setTime(prev => prev + dt);
-      animationRef.current = requestAnimationFrame(animate);
-    }
-    animationRef.current = requestAnimationFrame(animate);
-  }
-
-  function resetAnimation() {
-    stopAnimation();
-    setTime(0);
-  }
-
-  useEffect(() => {
-    return () => {
-      if (animationRef.current !== null) cancelAnimationFrame(animationRef.current);
-    };
-  }, []);
+  const {
+    isPlaying,
+    uiTimeFrac,
+    startAnimation,
+    stopAnimation,
+    resetAnimation,
+  } = usePhysicsEngine({
+    duration: 1, // Doesn't map well to generative sim out of box, so we just run a loop
+    throttleMs: 100,
+    onUpdate: () => {} 
+  });
+  
+  // To keep backwards compat with the existing un-optimized Simulation Engine (which isn't 
+  // used much anymore), we can just feed uiTimeFrac into time and let it loop
+  // Or we can just leave time looping properly since this is a fallback component.
+  // Actually, we'll map a fake endless time by tracking last update since usePhysicsEngine loops 0-1
+  const time = uiTimeFrac * 10; // 10 second looping sim time
 
   return (
     <div className="mt-3 rounded-lg bg-[#111111] p-3 text-[#f5f5f5]">
