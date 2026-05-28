@@ -11,18 +11,80 @@ from app.core.config import settings
 from app.db.models import Document
 from app.db.repositories import MessageRepository
 from sqlalchemy import select
-from app.schemas.chat import ChatRequest, ChatResponse
+from app.schemas.chat import ChatRequest, ChatResponse, ExamTransitionRequest
 from app.schemas.domain import MessageCreate
 from app.services.ai.ollama_adapter import OllamaAdapter
 from app.services.ai.prompt_policy import build_tutor_prompt
 from app.services.ai.visual_blocks import infer_visual_blocks
 from app.services.rag.retriever import retriever
+from app.services.exams.exam_summary_builder import build_educational_summary, build_hidden_system_context
 
 logger = logging.getLogger(__name__)
 
 import re
 
 router = APIRouter(prefix="/api/chat", tags=["chat"])
+
+@router.post("/exam_transition")
+async def stream_exam_transition(
+    request: ExamTransitionRequest,
+    session: AsyncSessionDep
+) -> StreamingResponse:
+    adapter = OllamaAdapter()
+    
+    # 1. Build the educational summary
+    summary_data = build_educational_summary(request.exam_results)
+    
+    # 2. Build the hidden system context
+    system_context = build_hidden_system_context(summary_data)
+    
+    # 3. Add to visual blocks
+    visual_blocks = [{
+        "id": "exam-summary",
+        "type": "exam_summary",
+        "params": summary_data
+    }]
+
+    async def event_stream():
+        # Yield padding to bypass Windows AV/TCP strict SSE buffering
+        yield f": {' ' * 2048}\n\n"
+        
+        yield f"data: {json.dumps({'type': 'meta', 'model': settings.ollama_model, 'visual_blocks': visual_blocks})}\n\n"
+        
+        # Build prompt
+        system_prompt, _ = build_tutor_prompt(
+            "User just finished an exam.", 
+            request.learning_mode, 
+            context="",
+            active_document_filenames=[]
+        )
+        
+        # Inject our hidden RECENT_EXAM_CONTEXT
+        system_prompt += f"\n\n{system_context}"
+        
+        # The user's actual prompt is implicit (we simulate them saying 'I just finished the exam')
+        user_prompt = "I just finished the assessment. Can you give me some feedback and help me improve?"
+        
+        full_content = ""
+        try:
+            async for chunk in adapter.stream(user_prompt, request.history, system_prompt=system_prompt, temperature=0.7):
+                try:
+                    parsed_chunk = json.loads(chunk)
+                    text = parsed_chunk.get("message", {}).get("content", "")
+                    if text:
+                        full_content += text
+                        payload = json.dumps({"type": "chunk", "text": text})
+                        yield f"data: {payload}\n\n"
+                except Exception:
+                    pass
+            
+            yield f"data: {json.dumps({'type': 'done'})}\n\n"
+            
+        except Exception as e:
+            logger.error(f"Error in stream_exam_transition generation: {e}")
+            yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
+
+    return StreamingResponse(event_stream(), media_type="text/event-stream")
 
 def _is_simple_greeting(message: str) -> bool:
     """Lightweight heuristic to bypass RAG for casual chat."""
@@ -88,18 +150,30 @@ async def create_chat_message(
         from app.services.ai.concept_detector import detect_concept
         from app.schemas.chat import VisualBlock
         
-        concept = detect_concept(request.message, context_text)
+        concept = await detect_concept(request.message, context_text)
         if concept and concept["confidence"] > 0.7:
             logger.info(f'[VISUAL] concept_detected={concept["concept_id"]} confidence={concept["confidence"]}')
             cid = concept["concept_id"]
             
             mapping = {
+                "triangle_angle_sum": ("geometry.triangle", {}),
+                "supplementary_angles": ("geometry.triangle", {}),
+                "circle_geometry": ("geometry.circle", {}),
+                "pythagorean_theorem": ("geometry.triangle", {}),
+                "linear_equation": ("math.linearGraph", {}),
+                "graph_function": ("math.quadraticGraph", {}),
+                "trigonometry_basic": ("math.sineGraph", {}),
+                
                 "newton_second_law": ("physics.forceMotion", {}),
+                "force_motion": ("physics.forceMotion", {}),
+                "speed_velocity_acceleration": ("physics.engineLab", {"scenario": "kinematics"}),
                 "projectile_motion": ("physics.projectile", {}),
                 "quadratic_equation": ("math.quadraticGraph", {}),
                 "waves": ("physics.engineLab", {"scenario": "waves"}),
                 "optics": ("physics.engineLab", {"scenario": "optics"}),
+                "optics_reflection": ("physics.engineLab", {"scenario": "optics"}),
                 "electricity": ("physics.engineLab", {"scenario": "electricity"}),
+                "electricity_current": ("physics.engineLab", {"scenario": "electricity"}),
                 "energy": ("physics.engineLab", {"scenario": "energy"}),
                 "pressure": ("physics.engineLab", {"scenario": "pressure"}),
                 "sine_cosine": ("math.sineGraph", {}),
@@ -146,6 +220,68 @@ async def create_chat_message(
         content=content,
         visual_blocks=visual_blocks,
         model=settings.ollama_model,
+    )
+
+from app.schemas.chat import VisualizeRequest, VisualBlock
+from app.services.ai.concept_detector import detect_concept
+
+@router.post("/visualize", response_model=VisualBlock)
+async def generate_visualization(request: VisualizeRequest):
+    logger.info(f"[VISUALIZATION] Request: query='{request.query[:80]}'")
+    
+    try:
+        concept = await detect_concept(request.query, request.context)
+    except Exception as e:
+        logger.error(f"[VISUALIZATION ERROR] Concept detection failed: {e}")
+        raise HTTPException(status_code=500, detail="Concept detection failed")
+    
+    if not concept:
+        logger.info("[VISUALIZATION] No concept detected")
+        raise HTTPException(status_code=404, detail="Could not identify a visualizable concept")
+        
+    cid = concept["concept_id"]
+    logger.info(f"[VISUALIZATION] Concept detected: {cid} (confidence={concept.get('confidence', '?')})")
+    
+    mapping = {
+        "triangle_angle_sum": ("geometry.triangle", {}),
+        "supplementary_angles": ("geometry.triangle", {}),
+        "circle_geometry": ("geometry.circle", {}),
+        "pythagorean_theorem": ("geometry.triangle", {}),
+        "linear_equation": ("math.linearGraph", {}),
+        "graph_function": ("math.quadraticGraph", {}),
+        "trigonometry_basic": ("math.sineGraph", {}),
+        
+        "newton_second_law": ("physics.forceMotion", {}),
+        "force_motion": ("physics.forceMotion", {}),
+        "speed_velocity_acceleration": ("physics.engineLab", {"scenario": "kinematics"}),
+        "projectile_motion": ("physics.projectile", {}),
+        "quadratic_equation": ("math.quadraticGraph", {}),
+        "waves": ("physics.engineLab", {"scenario": "waves"}),
+        "optics": ("physics.engineLab", {"scenario": "optics"}),
+        "optics_reflection": ("physics.engineLab", {"scenario": "optics"}),
+        "electricity": ("physics.engineLab", {"scenario": "electricity"}),
+        "electricity_current": ("physics.engineLab", {"scenario": "electricity"}),
+        "energy": ("physics.engineLab", {"scenario": "energy"}),
+        "pressure": ("physics.engineLab", {"scenario": "pressure"}),
+        "sine_cosine": ("math.sineGraph", {}),
+        "kinematics": ("physics.engineLab", {"scenario": "kinematics"}),
+        "momentum": ("physics.engineLab", {"scenario": "force"})
+    }
+    
+    if cid not in mapping:
+        logger.warning(f"[VISUALIZATION ERROR] Unsupported concept: {cid}")
+        raise HTTPException(status_code=404, detail=f"Concept {cid} is not visualizable yet")
+        
+    vtype, vparams = mapping[cid]
+    if "extracted_params" in concept and isinstance(concept["extracted_params"], dict):
+        vparams.update(concept["extracted_params"])
+    
+    logger.info(f"[VISUALIZATION] Block generated: type={vtype} params={vparams}")
+        
+    return VisualBlock(
+        id=f"rag-visual-{cid}",
+        type=vtype,
+        params=vparams
     )
 
 
@@ -401,12 +537,24 @@ async def websocket_chat_stream(
             if concept and concept["confidence"] > 0.7:
                 cid = concept["concept_id"]
                 mapping = {
+                    "triangle_angle_sum": ("geometry.triangle", {}),
+                    "supplementary_angles": ("geometry.triangle", {}),
+                    "circle_geometry": ("geometry.circle", {}),
+                    "pythagorean_theorem": ("geometry.triangle", {}),
+                    "linear_equation": ("math.linearGraph", {}),
+                    "graph_function": ("math.quadraticGraph", {}),
+                    "trigonometry_basic": ("math.sineGraph", {}),
+                    
                     "newton_second_law": ("physics.forceMotion", {}),
+                    "force_motion": ("physics.forceMotion", {}),
+                    "speed_velocity_acceleration": ("physics.engineLab", {"scenario": "kinematics"}),
                     "projectile_motion": ("physics.projectile", {}),
                     "quadratic_equation": ("math.quadraticGraph", {}),
                     "waves": ("physics.engineLab", {"scenario": "waves"}),
                     "optics": ("physics.engineLab", {"scenario": "optics"}),
+                    "optics_reflection": ("physics.engineLab", {"scenario": "optics"}),
                     "electricity": ("physics.engineLab", {"scenario": "electricity"}),
+                    "electricity_current": ("physics.engineLab", {"scenario": "electricity"}),
                     "energy": ("physics.engineLab", {"scenario": "energy"}),
                     "pressure": ("physics.engineLab", {"scenario": "pressure"}),
                     "sine_cosine": ("math.sineGraph", {}),

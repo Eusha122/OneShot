@@ -28,18 +28,18 @@ class OllamaAdapter:
         temperature: float = 0.7,
         response_format: str | None = None,
     ) -> str:
-        async with httpx.AsyncClient(timeout=180) as client:
+        async with httpx.AsyncClient(timeout=None) as client:
             payload = {
                 "model": self.model,
                 "messages": self._build_messages(prompt, history, system_prompt),
                 "stream": False,
                 "options": {
                     "temperature": temperature,
-                    "num_ctx": 2048
+                    "num_ctx": 4096
                 },
             }
-            if response_format:
-                payload["format"] = response_format
+            # Removed format="json" because it forces strict parsing which can hang small models (like 1.5b)
+            # if they output invalid characters. We rely on prompt engineering instead.
 
             response = await client.post(
                 f"{self.base_url}/api/chat",

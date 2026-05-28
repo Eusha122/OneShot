@@ -67,7 +67,7 @@ export type ChatStreamEvent =
       type: "done";
     };
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:8000";
+export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:8000";
 
 export interface UploadResponse {
   document_id: number;
@@ -124,11 +124,11 @@ export async function generateExam(config: any, learnerId?: number): Promise<any
   return response.json();
 }
 
-export async function evaluateAnswer(expectedAnswer: string, studentAnswer: string): Promise<{correct: boolean, partial_credit: number, reason: string}> {
+export async function evaluateAnswer(expectedAnswer: string, studentAnswer: string, questionType: string = "conceptual"): Promise<{correct: boolean, partial_credit: number, reason: string}> {
   const response = await fetch(`${API_BASE_URL}/api/exams/evaluate`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ expected_answer: expectedAnswer, student_answer: studentAnswer }),
+    body: JSON.stringify({ expected_answer: expectedAnswer, student_answer: studentAnswer, question_type: questionType }),
   });
   if (!response.ok) {
     const err = await response.json().catch(() => null);
@@ -269,3 +269,71 @@ export function streamChatMessage({
     }
   });
 }
+
+export async function streamExamTransition({
+  history,
+  learningMode,
+  examResults,
+  onEvent,
+}: {
+  history: ChatHistoryMessage[];
+  learningMode: LearningMode;
+  examResults: any[];
+  onEvent: (event: any) => void;
+}) {
+  const response = await fetch(`${API_BASE_URL}/api/chat/exam_transition`, {
+    body: JSON.stringify({
+      history,
+      learning_mode: learningMode,
+      exam_results: examResults,
+    }),
+    headers: {
+      "Content-Type": "application/json",
+    },
+    method: "POST",
+  });
+
+  if (!response.ok) {
+    throw new Error(`API returned ${response.status} ${response.statusText}`);
+  }
+  
+  if (!response.body) {
+    throw new Error("ReadableStream not supported");
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder("utf-8");
+
+  try {
+    let buffer = "";
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split("\n");
+
+      buffer = lines.pop() || "";
+
+      for (const line of lines) {
+        if (line.startsWith("data: ")) {
+          const data = line.slice("data: ".length).trim();
+          if (!data) continue;
+          
+          try {
+             const parsed = JSON.parse(data);
+             onEvent(parsed);
+          } catch (err) {
+             console.error("Failed to parse SSE event", err, data);
+          }
+        }
+      }
+    }
+  } catch (error) {
+    if (error instanceof TypeError && error.message.includes("network")) {
+      throw new Error("Unable to reach the local AI server. Make sure it is running.");
+    }
+    throw error;
+  }
+}
+

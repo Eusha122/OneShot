@@ -10,6 +10,7 @@ from app.api.routes.conversations import router as conversations_router
 from app.api.routes.documents import router as documents_router
 from app.api.routes.rag import router as rag_router
 from app.api.routes.exams import router as exams_router
+from app.api.routes.analytics import router as analytics_router
 from app.core.config import settings
 from app.core.storage import init_storage
 from app.db.database import sessionmanager
@@ -46,6 +47,7 @@ def create_app() -> FastAPI:
     app.include_router(documents_router)
     app.include_router(rag_router)
     app.include_router(exams_router, prefix="/api/exams", tags=["exams"])
+    app.include_router(analytics_router, prefix="/api/analytics", tags=["analytics"])
     return app
 
 

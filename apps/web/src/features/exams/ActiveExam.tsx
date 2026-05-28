@@ -1,10 +1,13 @@
 import React, { useState } from "react";
-import { Check, X, ArrowRight, Send, Loader2 } from "lucide-react";
+import { Check, X, ArrowRight, Send, Loader2, PlaySquare, PenLine } from "lucide-react";
 import { evaluateAnswer } from "../../lib/chatApi";
+import { VisualBlockRenderer } from "../visual-blocks/VisualBlockRenderer";
+import type { LearningVisualBlock } from "../visual-blocks/visualBlockTypes";
+import { WhiteboardPanel } from "./WhiteboardPanel";
 
 export interface ExamQuestion {
   id: string;
-  type: "mcq" | "written" | "fill_blank";
+  type: "mcq" | "written" | "fill_blank" | "math_numeric" | "math_expression" | "conceptual";
   question: string;
   options?: string[];
   answer: string;
@@ -23,19 +26,72 @@ export function ActiveExam({ questions, onFinish }: ActiveExamProps) {
   const [textInput, setTextInput] = useState<Record<string, string>>({});
   const [evaluating, setEvaluating] = useState<Record<string, boolean>>({});
   const [evaluations, setEvaluations] = useState<Record<string, { correct: boolean, partial_credit: number, reason: string }>>({});
+  const [visualizations, setVisualizations] = useState<Record<string, LearningVisualBlock>>({});
+  const [isVisualizing, setIsVisualizing] = useState<Record<string, boolean>>({});
+  const [vizErrors, setVizErrors] = useState<Record<string, string>>({});
+  const [vizRetries, setVizRetries] = useState<Record<string, number>>({});
+  const [showWhiteboard, setShowWhiteboard] = useState(false);
+  const [isWhiteboardFullscreen, setIsWhiteboardFullscreen] = useState(false);
 
-  const handleOptionSelect = (qId: string, option: string) => {
+  const MAX_VIZ_RETRIES = 2;
+
+  const handleVisualize = async (q: ExamQuestion) => {
+    // Dedup: already loading or already loaded
+    if (isVisualizing[q.id] || visualizations[q.id]) return;
+
+    // Retry limit
+    const retryCount = vizRetries[q.id] || 0;
+    if (retryCount >= MAX_VIZ_RETRIES) {
+      setVizErrors(prev => ({...prev, [q.id]: "Visualization unavailable for this question."}));
+      return;
+    }
+
+    setIsVisualizing(prev => ({...prev, [q.id]: true}));
+    setVizErrors(prev => { const n = {...prev}; delete n[q.id]; return n; });
+    setVizRetries(prev => ({...prev, [q.id]: retryCount + 1}));
+
+    try {
+      const res = await fetch("/api/chat/visualize", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ query: q.question, context: q.explanation || "" })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setVisualizations(prev => ({...prev, [q.id]: data}));
+      } else if (res.status === 404) {
+        setVizErrors(prev => ({...prev, [q.id]: "No visualization available for this concept."}));
+      } else {
+        setVizErrors(prev => ({...prev, [q.id]: "Visualization failed. Try again."}));
+      }
+    } catch(e) {
+      console.error("[Visualize]", e);
+      setVizErrors(prev => ({...prev, [q.id]: "Visualization unavailable."}));
+    }
+    setIsVisualizing(prev => ({...prev, [q.id]: false}));
+  };
+
+  const handleOptionSelect = async (qId: string, option: string) => {
     if (answers[qId]) return; // Locked
     setAnswers((prev) => ({ ...prev, [qId]: option }));
     
-    // Auto-evaluate MCQ
+    // Auto-evaluate MCQ via API
     const q = questions.find(q => q.id === qId);
     if (q) {
-      const isCorrect = option === q.answer;
-      setEvaluations((prev) => ({
-        ...prev,
-        [qId]: { correct: isCorrect, partial_credit: isCorrect ? 1.0 : 0.0, reason: isCorrect ? "Correct" : "Incorrect" }
-      }));
+      setEvaluating((prev) => ({ ...prev, [qId]: true }));
+      try {
+        const result = await evaluateAnswer(q.answer, option, q.type);
+        setEvaluations((prev) => ({ ...prev, [qId]: result }));
+      } catch (err) {
+        // Fallback
+        const isCorrect = option === q.answer;
+        setEvaluations((prev) => ({
+          ...prev,
+          [qId]: { correct: isCorrect, partial_credit: isCorrect ? 1.0 : 0.0, reason: "" }
+        }));
+      } finally {
+        setEvaluating((prev) => ({ ...prev, [qId]: false }));
+      }
     }
   };
 
@@ -49,7 +105,7 @@ export function ActiveExam({ questions, onFinish }: ActiveExamProps) {
     const q = questions.find(q => q.id === qId);
     if (q) {
       try {
-        const result = await evaluateAnswer(q.answer, val);
+        const result = await evaluateAnswer(q.answer, val, q.type);
         setEvaluations((prev) => ({ ...prev, [qId]: result }));
       } catch (err) {
         console.error("Evaluation failed", err);
@@ -80,16 +136,31 @@ export function ActiveExam({ questions, onFinish }: ActiveExamProps) {
   };
 
   return (
-    <div className="flex h-full w-full flex-col p-6 text-gray-200 overflow-y-auto">
-      <div className="mx-auto w-full max-w-3xl space-y-8 pb-32">
-        <div className="flex items-center justify-between border-b border-[#2a2a2a] pb-4">
-          <h2 className="font-serif text-2xl font-light text-white">Active Exam</h2>
-          <span className="text-sm text-gray-400">
-            {Object.keys(answers).length} / {questions.length} Answered
-          </span>
-        </div>
+    <div className="flex h-full w-full overflow-hidden bg-black">
+      {/* Left Pane: Exam Questions */}
+      <div className={`flex flex-col h-full overflow-y-auto p-6 transition-all duration-300 ${
+        showWhiteboard ? 'w-1/2 border-r border-[#2a2a2a]' : 'w-full'
+      }`}>
+        <div className="mx-auto w-full max-w-3xl space-y-8 pb-32">
+          <div className="flex items-center justify-between border-b border-[#2a2a2a] pb-4">
+            <h2 className="font-serif text-2xl font-light text-white">Active Exam</h2>
+            <div className="flex items-center gap-4">
+              <span className="text-sm text-gray-400">
+                {Object.keys(answers).length} / {questions.length} Answered
+              </span>
+              {!showWhiteboard && (
+                <button 
+                  onClick={() => setShowWhiteboard(true)}
+                  className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-[#222] border border-[#333] hover:bg-[#333] transition-colors text-gray-300 text-sm font-medium"
+                >
+                  <PenLine size={14} />
+                  Expand Whiteboard
+                </button>
+              )}
+            </div>
+          </div>
 
-        {questions.map((q, index) => {
+          {questions.map((q, index) => {
           const userAnswer = answers[q.id];
           const isAnswered = userAnswer !== undefined;
           const isEvaluating = evaluating[q.id];
@@ -111,14 +182,30 @@ export function ActiveExam({ questions, onFinish }: ActiveExamProps) {
                   : "border-[#2a2a2a] bg-[#1a1a1a]"
               }`}
             >
-              <div className="flex justify-between items-start mb-4">
-                <h3 className="text-lg text-white">
+              <div className="flex justify-between items-start mb-2">
+                <h3 className="text-lg text-white flex-1">
                   <span className="mr-3 text-amber-500">{index + 1}.</span>
                   {q.question}
                 </h3>
+              </div>
+              <div className="flex flex-wrap gap-1.5 mb-4">
+                {(q as any).chapter && (
+                  <span className="text-xs px-2 py-0.5 rounded-full bg-cyan-500/15 text-cyan-300 border border-cyan-500/30">
+                    📖 {(q as any).chapter}
+                  </span>
+                )}
+                {(q as any).difficulty && (
+                  <span className={`text-xs px-2 py-0.5 rounded-full border ${
+                    (q as any).difficulty === 'easy' ? 'bg-green-500/15 text-green-300 border-green-500/30' :
+                    (q as any).difficulty === 'hard' ? 'bg-red-500/15 text-red-300 border-red-500/30' :
+                    'bg-amber-500/15 text-amber-300 border-amber-500/30'
+                  }`}>
+                    {(q as any).difficulty === 'easy' ? '🟢' : (q as any).difficulty === 'hard' ? '🔴' : '🟡'} {(q as any).difficulty}
+                  </span>
+                )}
                 {q.source && (
-                  <span className={`text-xs px-2 py-1 rounded-full ${q.source === 'rag' ? 'bg-blue-500/20 text-blue-300 border border-blue-500/30' : 'bg-purple-500/20 text-purple-300 border border-purple-500/30'}`}>
-                    {q.source === 'rag' ? 'Curriculum' : 'Web Enriched'}
+                  <span className={`text-xs px-2 py-0.5 rounded-full ${q.source === 'rag' ? 'bg-blue-500/15 text-blue-300 border border-blue-500/30' : 'bg-purple-500/15 text-purple-300 border border-purple-500/30'}`}>
+                    {q.source === 'rag' ? '📘 Curriculum' : '🌐 Web'}
                   </span>
                 )}
               </div>
@@ -154,7 +241,7 @@ export function ActiveExam({ questions, onFinish }: ActiveExamProps) {
                 </div>
               )}
 
-              {(q.type === "written" || q.type === "fill_blank") && (
+              {(q.type === "written" || q.type === "fill_blank" || q.type === "math_numeric" || q.type === "math_expression" || q.type === "conceptual") && (
                 <div className="flex gap-2">
                   <input
                     type="text"
@@ -202,12 +289,57 @@ export function ActiveExam({ questions, onFinish }: ActiveExamProps) {
                 </div>
               )}
               
-              {isAnswered && !isEvaluating && evalResult && evalResult.reason && (
-                <div className={`mt-4 p-3 rounded-md text-sm ${isCorrect ? 'bg-green-500/10 text-green-400' : isPartial ? 'bg-amber-500/10 text-amber-400' : 'bg-red-500/10 text-red-400'}`}>
-                  <strong>AI Evaluation:</strong> {evalResult.reason}
+              {isAnswered && !isEvaluating && evalResult && (evalResult.reason || !isCorrect || q.type === "math_numeric" || q.type === "math_expression" || q.type === "mcq") && (
+                <div className={`mt-4 p-4 rounded-xl border flex flex-col gap-3 ${isCorrect ? 'bg-green-500/5 border-green-500/20 text-green-400' : isPartial ? 'bg-amber-500/5 border-amber-500/20 text-amber-400' : 'bg-red-500/5 border-red-500/20 text-red-400'}`}>
+                  {isCorrect && (q.type === "math_numeric" || q.type === "math_expression" || q.type === "mcq") && (
+                    <div className="font-bold flex items-center gap-2">
+                      <Check size={16} /> Correct
+                    </div>
+                  )}
+                  {!isCorrect && (q.type === "math_numeric" || q.type === "math_expression" || q.type === "mcq") && (
+                    <div className="font-bold text-white flex items-center gap-2">
+                      Expected: <span className="px-2 py-1 bg-black/30 rounded border border-white/10">{q.answer}</span>
+                    </div>
+                  )}
+                  {evalResult.reason && (
+                    <div className="text-sm"><strong>AI Evaluation:</strong> {evalResult.reason}</div>
+                  )}
                   {!isCorrect && q.explanation && (
-                    <div className="mt-2 text-gray-300">
-                      <strong>Expected Answer Context:</strong> {q.explanation}
+                    <div className="text-sm text-gray-300">
+                      <strong>Explanation:</strong> {q.explanation}
+                    </div>
+                  )}
+                  
+                  {/* Dynamic Interactive Visual Learning Block */}
+                  {!isCorrect && (
+                    <div className="mt-2 flex flex-col gap-3">
+                      {visualizations[q.id] ? (
+                        <div className="w-full">
+                          <VisualBlockRenderer block={visualizations[q.id]} />
+                        </div>
+                      ) : vizErrors[q.id] ? (
+                        <div className="flex items-center gap-2 px-4 py-2 rounded-lg bg-amber-500/5 border border-amber-500/20 text-amber-400 text-sm">
+                          <span>⚠</span> {vizErrors[q.id]}
+                        </div>
+                      ) : (
+                        <button 
+                          onClick={() => handleVisualize(q)}
+                          disabled={isVisualizing[q.id]}
+                          className="self-start flex items-center gap-2 px-4 py-2 rounded-lg bg-[#222] border border-[#444] text-cyan-400 hover:bg-[#333] transition-colors text-sm font-medium disabled:opacity-50"
+                        >
+                          {isVisualizing[q.id] ? (
+                            <>
+                              <Loader2 size={16} className="animate-spin" />
+                              Generating Visualization...
+                            </>
+                          ) : (
+                            <>
+                              <PlaySquare size={16} />
+                              Visualize Problem
+                            </>
+                          )}
+                        </button>
+                      )}
                     </div>
                   )}
                 </div>
@@ -218,7 +350,10 @@ export function ActiveExam({ questions, onFinish }: ActiveExamProps) {
       </div>
 
       {isComplete && (
-        <div className="fixed bottom-0 left-64 right-0 flex justify-center border-t border-[#2a2a2a] bg-[#0f0f0f]/80 p-6 backdrop-blur-md">
+        <div 
+          className="fixed bottom-0 left-64 flex justify-center border-t border-[#2a2a2a] bg-[#0f0f0f]/80 p-6 backdrop-blur-md z-20 transition-all duration-300"
+          style={{ right: showWhiteboard ? '50%' : 0 }}
+        >
           <button
             onClick={() => onFinish(calculateScore(), answers, evaluations)}
             className="flex w-full max-w-sm items-center justify-center gap-2 rounded-lg bg-amber-500 py-3 font-medium text-black transition-colors hover:bg-amber-400 shadow-[0_0_20px_rgba(245,158,11,0.2)]"
@@ -226,6 +361,18 @@ export function ActiveExam({ questions, onFinish }: ActiveExamProps) {
             View Result & Ask AI
             <ArrowRight size={18} />
           </button>
+        </div>
+      )}
+      </div>
+
+      {/* Right Pane: Whiteboard */}
+      {showWhiteboard && (
+        <div className="w-1/2 h-full bg-[#050505] p-3 flex flex-col relative z-10 shadow-[-20px_0_40px_rgba(0,0,0,0.6)]">
+          <WhiteboardPanel 
+            onClose={() => setShowWhiteboard(false)} 
+            isFullscreen={isWhiteboardFullscreen}
+            onToggleFullscreen={() => setIsWhiteboardFullscreen(!isWhiteboardFullscreen)}
+          />
         </div>
       )}
     </div>

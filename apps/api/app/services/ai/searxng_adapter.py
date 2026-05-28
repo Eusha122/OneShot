@@ -13,22 +13,29 @@ class SearxNGAdapter:
         Search SearxNG and return concatenated text from the top results.
         Returns a single string of context.
         """
-        logger.info(f"[SearxNG] Searching for: {query}")
+        print(f"[SearXNG] Query: {query}")
         try:
-            async with httpx.AsyncClient(timeout=10.0) as client:
+            async with httpx.AsyncClient(timeout=8.0) as client:
+                headers = {
+                    "User-Agent": "Mozilla/5.0",
+                    "Accept": "application/json"
+                }
                 response = await client.get(
                     f"{self.base_url}/search",
                     params={
                         "q": query,
                         "format": "json",
-                        "engines": "google,duckduckgo,wikipedia",
+                        "engines": "duckduckgo,wikipedia",
                         "language": "en"
-                    }
+                    },
+                    headers=headers
                 )
+                print(f"[SearXNG] Status: {response.status_code}")
                 response.raise_for_status()
                 data = response.json()
                 
                 results = data.get("results", [])[:num_results]
+                print(f"[SearXNG] Results: {len(results)}")
                 
                 if not results:
                     return ""
@@ -44,7 +51,7 @@ class SearxNGAdapter:
                 return "\n\n---\n\n".join(context_parts)
                 
         except Exception as e:
-            logger.error(f"[SearxNG] Search failed: {e}")
+            print(f"[SearXNG] Failed: {e}")
             return ""
 
 searxng_adapter = SearxNGAdapter()

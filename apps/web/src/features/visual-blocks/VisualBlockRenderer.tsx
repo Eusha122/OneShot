@@ -1,59 +1,41 @@
-import { lazy, Suspense } from "react";
+import { Suspense } from "react";
 import { ProgressiveReveal } from "./ProgressiveReveal";
 import type { LearningVisualBlock } from "./visualBlockTypes";
-
-const FunctionGraph = lazy(() =>
-  import("../math-visualizer/FunctionGraph").then((module) => ({
-    default: module.FunctionGraph,
-  })),
-);
-
-const ProjectileSimulation = lazy(() =>
-  import("../physics-sim/ProjectileSimulation").then((module) => ({
-    default: module.ProjectileSimulation,
-  })),
-);
-
-const PhysicsEngineLab = lazy(() =>
-  import("../physics-sim/PhysicsEngineLab").then((module) => ({
-    default: module.PhysicsEngineLab,
-  })),
-);
-
-const QuadraticGraph = lazy(() =>
-  import("../math-visualizer/QuadraticGraph").then((module) => ({
-    default: module.QuadraticGraph,
-  })),
-);
+import { VISUAL_BLOCKS } from "./registry";
+import { UnknownVisualization } from "./UnknownVisualization";
+import { VisualBlockErrorBoundary } from "./VisualBlockErrorBoundary";
 
 export function VisualBlockRenderer({ block }: { block: LearningVisualBlock }) {
+  // Try to resolve the component from the registry
+  const Component = VISUAL_BLOCKS[block.type as keyof typeof VISUAL_BLOCKS];
+
+  if (!Component) {
+    console.warn(`[VisualBlockRenderer] No component found for type: ${block.type}`);
+    return <UnknownVisualization type={block.type} />;
+  }
+
+  // Handle special case for physics.forceMotion which reuses PhysicsEngineLab
+  const renderParams = block.type === "physics.forceMotion" 
+    ? { ...block.params, scenario: "force" } 
+    : block.params;
+
   return (
-    <ProgressiveReveal>
-      {(phase) => (
-        <Suspense fallback={<VisualBlockLoading />}>
-          {block.type === "physics.projectile" ? (
-            <ProjectileSimulation initialParams={block.params} phase={phase} />
-          ) : block.type === "physics.engineLab" ? (
-            <PhysicsEngineLab initialParams={block.params} phase={phase} />
-          ) : block.type === "physics.forceMotion" ? (
-            <PhysicsEngineLab initialParams={{ ...block.params, scenario: "force" }} phase={phase} />
-          ) : block.type === "math.quadraticGraph" ? (
-            <QuadraticGraph initialParams={block.params} phase={phase} />
-          ) : block.type === "math.sineGraph" ? (
-            <FunctionGraph initialParams={block.params} phase={phase} />
-          ) : (
-            ((exhaustive: never) => null)(block)
-          )}
-        </Suspense>
-      )}
-    </ProgressiveReveal>
+    <VisualBlockErrorBoundary fallbackMessage={`Failed to render "${block.type}" block.`}>
+      <ProgressiveReveal>
+        {(phase) => (
+          <Suspense fallback={<VisualBlockLoading />}>
+            <Component initialParams={renderParams as any} phase={phase} />
+          </Suspense>
+        )}
+      </ProgressiveReveal>
+    </VisualBlockErrorBoundary>
   );
 }
 
 function VisualBlockLoading() {
   return (
-    <div className="mt-3 rounded-lg bg-[#111111] px-4 py-3 text-sm text-[#9ca3af]">
-      Preparing visual block...
+    <div className="mt-3 flex h-52 w-full animate-pulse items-center justify-center rounded-lg bg-[#111111]">
+      <div className="h-6 w-6 rounded-full border-2 border-[#333] border-t-[#f5f5f5] animate-spin" />
     </div>
   );
 }

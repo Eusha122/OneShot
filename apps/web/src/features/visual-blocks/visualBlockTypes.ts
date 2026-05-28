@@ -63,4 +63,23 @@ export type LearningVisualBlock =
       type: "math.quadraticGraph";
       params: QuadraticParams;
       replayable?: boolean;
+    }
+  | {
+      id: string;
+      type: "geometry.triangle";
+      params: import("../math-visualizer/TriangleVisualization").TriangleParams;
+      replayable?: boolean;
+    }
+  | {
+      id: string;
+      type: "exam_summary";
+      params: any;
+      replayable?: boolean;
+    }
+  | {
+      /** Catch-all for new/unknown block types from backend */
+      id: string;
+      type: string;
+      params: Record<string, any>;
+      replayable?: boolean;
     };

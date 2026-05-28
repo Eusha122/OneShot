@@ -1,10 +1,11 @@
 import React, { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { ArrowUp, Atom, CheckCircle, ChevronRight, Loader, Menu, Mic, Paperclip, PenTool, Plus, Search, Sigma, Upload, X } from "lucide-react";
+import { ArrowUp, Atom, CheckCircle, ChevronRight, Loader, Menu, Mic, Paperclip, PenTool, Plus, Search, Settings, Sigma, Upload, X, BarChart2 } from "lucide-react";
 import { AssistantMarkdown } from "../features/chat/AssistantMarkdown";
 import { VisualBlockRenderer } from "../features/visual-blocks/VisualBlockRenderer";
 import type { LearningVisualBlock } from "../features/visual-blocks/visualBlockTypes";
-import { streamChatMessage, getConversations, getConversation, createConversation, createLearnerProfile, uploadDocument, getDocumentStatus, type Conversation } from "../lib/chatApi";
+import { streamChatMessage, streamExamTransition, getConversations, getConversation, createConversation, createLearnerProfile, uploadDocument, getDocumentStatus, type Conversation } from "../lib/chatApi";
+import { ProfileModal } from "../features/profile/ProfileModal";
 
 type LearningMode =
   | "explain_simply"
@@ -31,6 +32,7 @@ interface Message {
 }
 
 import { ExamWorkspace } from "../features/exams/ExamWorkspace";
+import { AnalyticsDashboard } from "../features/dashboard/AnalyticsDashboard";
 
 const modes: { id: LearningMode; label: string }[] = [
   { id: "explain_simply", label: "Explain Simply" },
@@ -42,7 +44,7 @@ const modes: { id: LearningMode; label: string }[] = [
 ];
 
 export function App() {
-  const [activeView, setActiveView] = useState<"chat" | "whiteboard" | "exams">("chat");
+  const [activeView, setActiveView] = useState<"chat" | "whiteboard" | "exams" | "dashboard">("chat");
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [selectedMode, setSelectedMode] = useState<LearningMode>("visual_mode");
   const [draft, setDraft] = useState("");
@@ -74,6 +76,7 @@ export function App() {
     activeDocumentsRef.current = activeDocuments;
   }, [activeDocuments]);
   const [activePipelineStages, setActivePipelineStages] = useState<string[]>([]);
+  const [isProfileOpen, setIsProfileOpen] = useState(false);
 
   // Sync when conversation changes
   useEffect(() => {
@@ -396,42 +399,139 @@ export function App() {
 
         <section ref={mainScrollRef} className="flex min-w-0 flex-1 flex-col overflow-y-auto relative">
           <header className="sticky top-0 z-20 h-14 shrink-0 border-b border-[#1f1f1f] bg-[#0a0a0a]/90 backdrop-blur-md px-3">
-            <div className="flex h-full items-center gap-2">
+            <div className="flex h-full items-center justify-between">
               <p className="text-sm font-medium text-[#f5f5f5]">OneShot</p>
+              <button
+                onClick={() => setIsProfileOpen(true)}
+                className="grid h-8 w-8 place-items-center rounded-md text-[#9ca3af] transition hover:bg-[#1a1a1a] hover:text-amber-400"
+                title="Student Profile Settings"
+              >
+                <Settings size={16} />
+              </button>
             </div>
           </header>
 
-          {activeView === "exams" ? (
+          <ProfileModal
+            isOpen={isProfileOpen}
+            onClose={() => setIsProfileOpen(false)}
+            learnerId={learnerId}
+          />
+
+          {activeView === "dashboard" ? (
+            <div className="flex-1 overflow-y-auto">
+              <AnalyticsDashboard onStartRevision={(topic) => {
+                setActiveView("exams");
+                // In a real app we'd pass the topic down, but switching the view is enough for the demo
+              }} />
+            </div>
+          ) : activeView === "exams" ? (
             <div className="flex-1 overflow-y-auto">
               <ExamWorkspace 
                 learnerId={learnerId === null ? undefined : learnerId} 
-                onFinishExam={(score, questions, answers, evaluations) => {
+                onFinishExam={async (score, questions, answers, evaluations) => {
                   setActiveView("chat");
                   
-                  const mistakes = questions
-                    .filter(q => {
-                      const evalResult = evaluations?.[q.id];
-                      return evalResult && evalResult.partial_credit < 1.0;
-                    })
-                    .map(q => ({
-                      question: q.question,
-                      student_answer: answers[q.id],
-                      expected_answer: q.answer,
-                      evaluation_reason: evaluations?.[q.id]?.reason || "Incorrect"
-                    }));
-                    
-                  const summaryPayload = {
-                    event: "EXAM_COMPLETED",
-                    score: score,
-                    total: questions.length,
-                    topic: questions[0]?.type || "unknown topic",
-                    mistakes: mistakes
-                  };
+                  // Submit exam results to analytics backend silently
+                  if (learnerId) {
+                    try {
+                      await fetch(`http://localhost:8000/api/exams/submit`, {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                          learner_id: learnerId,
+                          subject: questions[0]?.type || "unknown subject",
+                          questions: questions.map(q => ({
+                            id: q.id,
+                            chapter: (q as any).chapter || "General",
+                            type: q.type,
+                            correct: evaluations?.[q.id]?.correct || false
+                          }))
+                        })
+                      });
+                    } catch (err) {
+                      console.error("Failed to submit exam analytics", err);
+                    }
+                  }
+
+                  const examResultsPayload = questions.map(q => ({
+                    id: q.id,
+                    question: q.question,
+                    chapter: (q as any).chapter || "General",
+                    concepts: (q as any).concepts || [],
+                    type: q.type,
+                    student_answer: answers[q.id],
+                    expected_answer: q.answer,
+                    evaluation: evaluations?.[q.id]
+                  }));
+
+                  // 1. Setup Chat UI state
+                  const assistantMessageId = crypto.randomUUID();
+                  setIsGenerating(true);
+                  setActivePipelineStages([]);
+                  setDraft("");
                   
-                  const prompt = `I just took a ${questions.length} question exam on ${questions[0]?.type || "topic"}.\nMy score: ${score}/${questions.length}.\n\nHere is my performance report:\n\`\`\`json\n${JSON.stringify(summaryPayload, null, 2)}\n\`\`\`\n\nPlease evaluate my performance, explain my specific mistakes, and adapt your future teaching to help me improve in my weak areas.`;
+                  let newConvId: number | undefined;
+                  if (learnerId) {
+                    try {
+                      const newConv = await createConversation(learnerId, "Exam Results: " + (questions[0]?.type || "Assessment"));
+                      newConvId = newConv.id;
+                      skipFetchRef.current = true;
+                      setActiveConversationId(newConv.id);
+                      setConversationsList(prev => [newConv, ...prev]);
+                    } catch (e) {
+                      console.error("Failed to create conv for exam", e);
+                    }
+                  }
+
+                  // Empty history because it's a new conversation
+                  const history: any[] = [];
                   
-                  setDraft(prompt);
-                  setTimeout(() => submitMessage(prompt), 100);
+                  // Set messages to ONLY the placeholder assistant message (new tab)
+                  setMessages([
+                    {
+                      id: assistantMessageId,
+                      role: "assistant",
+                      content: "",
+                    }
+                  ]);
+
+                  // 2. Stream transition
+                  try {
+                    await streamExamTransition({
+                      history,
+                      learningMode: selectedMode,
+                      examResults: examResultsPayload,
+                      onEvent: (event) => {
+                        if (event.type === "meta") {
+                          const validBlocks = Array.isArray(event.visual_blocks) ? event.visual_blocks.filter(Boolean) : [];
+                          setMessages((current) =>
+                            current.map((message) =>
+                              message.id === assistantMessageId ? { ...message, visualBlocks: validBlocks } : message,
+                            ),
+                          );
+                          return;
+                        }
+
+                        if (event.type === "chunk") {
+                          setMessages((current) =>
+                            current.map((message) =>
+                              message.id === assistantMessageId
+                                ? { ...message, content: `${message.content}${event.text}` }
+                                : message,
+                            ),
+                          );
+                          return;
+                        }
+
+                        if (event.type === "done" || event.type === "error") {
+                           setIsGenerating(false);
+                        }
+                      }
+                    });
+                  } catch (err) {
+                     console.error("Failed to stream exam transition", err);
+                     setIsGenerating(false);
+                  }
                 }} 
               />
             </div>
@@ -509,6 +609,15 @@ function OnboardingModal({ onComplete }: { onComplete: (id: number) => void }) {
           .filter(Boolean),
       });
       localStorage.setItem("oneshot_learner_id", String(data.id));
+      // Persist profile locally so the exam engine can read it
+      localStorage.setItem("oneshot_profile", JSON.stringify({
+        display_name: displayName,
+        grade,
+        board,
+        language_preference: language,
+        subjects_of_interest: subjects,
+        weak_topics: weakTopics.split(",").map((t: string) => t.trim()).filter(Boolean),
+      }));
       onComplete(data.id);
     } catch (err) {
       console.error(err);
@@ -688,6 +797,9 @@ function Sidebar({
       </label>
 
       <nav className="mt-4 space-y-1">
+        <div onClick={() => setActiveView("dashboard")}>
+          <SidebarButton icon={<BarChart2 size={16} />} label="Dashboard" active={activeView === "dashboard"} />
+        </div>
         <div onClick={() => setActiveView("chat")}>
           <SidebarButton icon={<Search size={16} />} label="Chat" active={activeView === "chat"} />
         </div>

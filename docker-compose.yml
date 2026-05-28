@@ -38,6 +38,8 @@ services:
       - search
     ports:
       - "8080:8080"
+    volumes:
+      - ./searxng_settings.yml:/etc/searxng/settings.yml
 
   redis:
     image: redis:alpine

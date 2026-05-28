@@ -2,10 +2,37 @@ import re
 from typing import Dict, Any, Optional
 
 CONCEPT_MAPPINGS = [
+    # GEOMETRY
     {
-        "concept_id": "newton_second_law",
+        "concept_id": "triangle_angle_sum",
+        "subject": "math",
+        "keywords": ["triangle", "angle sum", "180", "angles in a triangle"],
+        "weight": 0.3
+    },
+    {
+        "concept_id": "supplementary_angles",
+        "subject": "math",
+        "keywords": ["supplementary", "180 degrees", "straight line", "angles on a line"],
+        "weight": 0.3
+    },
+    {
+        "concept_id": "circle_geometry",
+        "subject": "math",
+        "keywords": ["circle", "radius", "diameter", "circumference", "arc", "tangent"],
+        "weight": 0.25
+    },
+    {
+        "concept_id": "pythagorean_theorem",
+        "subject": "math",
+        "keywords": ["pythagorean", "pythagoras", "right triangle", "hypotenuse", "a^2 + b^2", "a2 + b2"],
+        "weight": 0.3
+    },
+    
+    # PHYSICS
+    {
+        "concept_id": "speed_velocity_acceleration",
         "subject": "physics",
-        "keywords": ["newton", "force", "acceleration", "mass", "f = ma", "f=ma"],
+        "keywords": ["velocity", "speed", "acceleration", "kinematics", "displacement"],
         "weight": 0.25
     },
     {
@@ -15,64 +42,48 @@ CONCEPT_MAPPINGS = [
         "weight": 0.25
     },
     {
-        "concept_id": "quadratic_equation",
+        "concept_id": "force_motion",
+        "subject": "physics",
+        "keywords": ["newton", "force", "mass", "friction", "push", "pull", "f = ma", "f=ma"],
+        "weight": 0.25
+    },
+    {
+        "concept_id": "optics_reflection",
+        "subject": "physics",
+        "keywords": ["lens", "mirror", "reflection", "refraction", "optics", "focal length", "light ray"],
+        "weight": 0.25
+    },
+    {
+        "concept_id": "electricity_current",
+        "subject": "physics",
+        "keywords": ["ohm", "current", "electric", "voltage", "resistance", "circuit", "amps"],
+        "weight": 0.25
+    },
+    
+    # MATH
+    {
+        "concept_id": "linear_equation",
         "subject": "math",
-        "keywords": ["quadratic", "parabola", "x^2", "x2", "vertex", "roots"],
+        "keywords": ["linear", "y = mx + b", "slope", "intercept", "straight line equation"],
         "weight": 0.25
     },
     {
-        "concept_id": "waves",
-        "subject": "physics",
-        "keywords": ["wave", "sound", "frequency", "wavelength", "echo", "velocity"],
-        "weight": 0.25
-    },
-    {
-        "concept_id": "optics",
-        "subject": "physics",
-        "keywords": ["lens", "mirror", "focal length", "magnification", "refractive index", "critical angle"],
-        "weight": 0.25
-    },
-    {
-        "concept_id": "electricity",
-        "subject": "physics",
-        "keywords": ["ohm", "current", "electric", "voltage", "resistance", "power"],
-        "weight": 0.25
-    },
-    {
-        "concept_id": "energy",
-        "subject": "physics",
-        "keywords": ["energy", "work", "power", "kinetic", "potential"],
-        "weight": 0.25
-    },
-    {
-        "concept_id": "pressure",
-        "subject": "physics",
-        "keywords": ["pressure", "liquid", "density", "buoyancy", "pascal", "archimedes"],
-        "weight": 0.25
-    },
-    {
-        "concept_id": "sine_cosine",
+        "concept_id": "graph_function",
         "subject": "math",
-        "keywords": ["sine", "cosine", "sin", "cos", "wave", "amplitude", "frequency", "phase"],
+        "keywords": ["graph", "plot", "function", "curve", "coordinates", "x-axis", "y-axis"],
         "weight": 0.25
     },
     {
-        "concept_id": "kinematics",
-        "subject": "physics",
-        "keywords": ["velocity", "speed", "displacement", "kinematics"],
+        "concept_id": "trigonometry_basic",
+        "subject": "math",
+        "keywords": ["sine", "cosine", "tangent", "sin", "cos", "tan", "sohcahtoa", "trig"],
         "weight": 0.25
-    },
-    {
-        "concept_id": "momentum",
-        "subject": "physics",
-        "keywords": ["momentum", "collision", "impulse", "p=mv"],
-        "weight": 0.3
     }
 ]
 
 import json
 import logging
-from app.services.ai.ollama_adapter import OllamaAdapter
+from app.services.ai.parameter_extractor import extract_parameters
 
 logger = logging.getLogger(__name__)
 
@@ -111,36 +122,9 @@ async def detect_concept(query: str, context_text: str = "") -> Optional[Dict[st
             
     if best_concept and max_confidence > 0.3: # Minimum threshold to even return something
         cid = best_concept["concept_id"]
-        extracted_params = {}
         
-        # Try to dynamically extract parameters using the local LLM
-        try:
-            adapter = OllamaAdapter()
-            system_prompt = (
-                "You are a strict JSON parameter extractor. "
-                "Extract numerical physics/math parameters from the user's query that correspond to a simulation. "
-                "Only return valid JSON containing the parameters you found. Do not include units in the values, just numbers. "
-                "Example keys: 'speed', 'angleDegrees', 'mass', 'gravity', 'distance', 'voltage', 'force', 'friction'. "
-                "If no parameters are explicitly stated in the query, return {}."
-            )
-            response_text = await adapter.generate(
-                prompt=query,
-                history=[],
-                system_prompt=system_prompt,
-                temperature=0.0
-            )
-            
-            # Find the JSON block if the model added markdown fences
-            json_text = response_text
-            if "```json" in response_text:
-                json_text = response_text.split("```json")[1].split("```")[0]
-            elif "```" in response_text:
-                json_text = response_text.split("```")[1].split("```")[0]
-                
-            extracted_params = json.loads(json_text.strip())
-            logger.info(f"[CONCEPT DETECTOR] Extracted params: {extracted_params}")
-        except Exception as e:
-            logger.warning(f"Failed to extract JSON parameters: {e}")
+        # Use our deterministic extractor instead of inline LLM
+        extracted_params = await extract_parameters(cid, query, context_text)
             
         return {
             "concept_id": cid,

@@ -1,11 +1,15 @@
-import React, { useState } from "react";
-import { CheckCircle, Beaker, Atom, Sigma, Dna, Calculator } from "lucide-react";
+import React, { useState, useEffect } from "react";
+import { CheckCircle } from "lucide-react";
+import { SSC_CLASS_9_TOPICS } from "./curriculumTopics";
 
 export interface ExamConfig {
   subject: string;
   topic: string;
   count: number;
   type: string;
+  board: string;
+  class_name: string;
+  weak_topics: string[];
 }
 
 interface ExamConfigPanelProps {
@@ -19,23 +23,49 @@ export function ExamConfigPanel({ onGenerate, isGenerating }: ExamConfigPanelPro
   const [count, setCount] = useState(5);
   const [type, setType] = useState("mcq");
 
+  // Read profile from localStorage
+  const [board, setBoard] = useState("SSC");
+  const [className, setClassName] = useState("Class 9");
+  const [weakTopics, setWeakTopics] = useState<string[]>([]);
+
+  useEffect(() => {
+    try {
+      const profile = localStorage.getItem("oneshot_profile");
+      if (profile) {
+        const p = JSON.parse(profile);
+        if (p.board) setBoard(p.board);
+        if (p.grade) setClassName(p.grade);
+        if (p.weak_topics) setWeakTopics(p.weak_topics);
+      }
+    } catch {}
+  }, []);
+
+  // Get topic suggestions based on selected subject
+  const topicSuggestions = SSC_CLASS_9_TOPICS[subject] || [];
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    onGenerate({ subject, topic, count, type });
+    onGenerate({ subject, topic, count, type, board, class_name: className, weak_topics: weakTopics });
   };
 
   return (
     <div className="flex h-full w-full flex-col items-center justify-center p-6 text-gray-200">
       <div className="w-full max-w-lg rounded-2xl border border-[#2a2a2a] bg-[#1a1a1a] p-8 shadow-2xl">
-        <h2 className="mb-6 text-center font-serif text-2xl font-light text-white tracking-wide">
+        <h2 className="mb-2 text-center font-serif text-2xl font-light text-white tracking-wide">
           Adaptive Exam Engine
         </h2>
-        <form onSubmit={handleSubmit} className="space-y-6">
+        <p className="mb-6 text-center text-xs text-gray-500">
+          {board} · {className}
+        </p>
+        <form onSubmit={handleSubmit} className="space-y-5">
           <div>
             <label className="mb-2 block text-sm text-gray-400">Select Subject</label>
             <select
               value={subject}
-              onChange={(e) => setSubject(e.target.value)}
+              onChange={(e) => {
+                setSubject(e.target.value);
+                setTopic("Full Book");
+              }}
               disabled={isGenerating}
               className="w-full rounded-lg border border-[#333] bg-[#0a0a0a] p-3 text-sm text-white focus:border-amber-500 focus:outline-none"
             >
@@ -48,15 +78,20 @@ export function ExamConfigPanel({ onGenerate, isGenerating }: ExamConfigPanelPro
           </div>
 
           <div>
-            <label className="mb-2 block text-sm text-gray-400">Specific Topic or Chapter</label>
-            <input
-              type="text"
+            <label className="mb-2 block text-sm text-gray-400">Chapter / Topic</label>
+            <select
               value={topic}
               onChange={(e) => setTopic(e.target.value)}
               disabled={isGenerating}
-              placeholder="e.g. Newton's Laws, Cell Division, or Full Book"
-              className="w-full rounded-lg border border-[#333] bg-[#0a0a0a] p-3 text-sm text-white placeholder-gray-600 focus:border-amber-500 focus:outline-none"
-            />
+              className="w-full rounded-lg border border-[#333] bg-[#0a0a0a] p-3 text-sm text-white focus:border-amber-500 focus:outline-none"
+            >
+              <option value="Full Book">📚 Full Book (All Chapters)</option>
+              {topicSuggestions.map((t) => (
+                <option key={t} value={t}>
+                  {t}
+                </option>
+              ))}
+            </select>
           </div>
 
           <div className="flex gap-4">
@@ -69,6 +104,9 @@ export function ExamConfigPanel({ onGenerate, isGenerating }: ExamConfigPanelPro
                 className="w-full rounded-lg border border-[#333] bg-[#0a0a0a] p-3 text-sm text-white focus:border-amber-500 focus:outline-none"
               >
                 <option value="mcq">Multiple Choice (MCQ)</option>
+                <option value="math_numeric">Numeric Math</option>
+                <option value="math_expression">Symbolic Math</option>
+                <option value="conceptual">Conceptual Theory</option>
                 <option value="written">Written Answer</option>
                 <option value="fill_blank">Fill in the Blanks</option>
               </select>
@@ -86,6 +124,19 @@ export function ExamConfigPanel({ onGenerate, isGenerating }: ExamConfigPanelPro
               />
             </div>
           </div>
+
+          {weakTopics.length > 0 && (
+            <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-3">
+              <p className="text-xs text-amber-400 mb-1">🎯 Weak areas detected (will be prioritized):</p>
+              <div className="flex flex-wrap gap-1.5">
+                {weakTopics.map((t) => (
+                  <span key={t} className="rounded-full bg-amber-500/20 px-2.5 py-0.5 text-xs text-amber-300 border border-amber-500/30">
+                    {t}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
 
           <button
             type="submit"
