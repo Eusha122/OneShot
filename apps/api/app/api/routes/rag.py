@@ -17,7 +17,7 @@ async def query_rag(request: RAGQueryRequest):
     if request.class_level:
         filters["class_level"] = request.class_level
         
-    results = retriever.retrieve(query=request.query, filters=filters, top_k=5)
+    results = retriever.retrieve(query=request.query, filters=filters, top_k=3)
     
     response = []
     for r in results:

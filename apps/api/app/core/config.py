@@ -11,7 +11,7 @@ class Settings(BaseSettings):
     app_env: str = "development"
     web_origin: str = "http://localhost:5173"
     ollama_base_url: str = "http://localhost:11434"
-    ollama_model: str = "qwen2.5:3b"
+    ollama_model: str = "qwen2.5:1.5b"
     environment: str = "development"
     debug: bool = False
     rag_similarity_threshold: float = 0.35

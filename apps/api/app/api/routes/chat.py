@@ -63,7 +63,7 @@ async def create_chat_message(
             filters["document_ids"] = request.active_document_ids
 
         rag_results = retriever.retrieve(query=request.message, filters=filters, top_k=3)
-        context_text = "\n\n".join([f"Source: {r['source']} (Page {r['page']})\n{r['content']}" for r in rag_results])
+        context_text = "\n\n".join([f"Source: {r['source']} (Page {r['page']})\n{r['content'][:600]}{'...' if len(r['content']) > 600 else ''}" for r in rag_results])
         
         sources = list(set(r['source'] for r in rag_results))
         logger.info(f'[RAG] query="{request.message}" chunks_found={len(rag_results)} sources={sources}')
@@ -188,7 +188,7 @@ async def stream_chat_message(
                 filters["document_ids"] = request.active_document_ids
 
             rag_results = retriever.retrieve(query=request.message, filters=filters, top_k=3)
-            context_text = "\n\n".join([f"Source: {r['source']} (Page {r['page']})\n{r['content']}" for r in rag_results])
+            context_text = "\n\n".join([f"Source: {r['source']} (Page {r['page']})\n{r['content'][:600]}{'...' if len(r['content']) > 600 else ''}" for r in rag_results])
             
             sources = list(set(r['source'] for r in rag_results))
             logger.info(f'[RAG] query="{request.message}" chunks_found={len(rag_results)} sources={sources}')

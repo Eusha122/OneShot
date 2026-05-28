@@ -42,8 +42,8 @@ Run with local Ollama:
 
 ```bash
 ollama serve
-ollama pull qwen2.5:3b
-ollama run qwen2.5:3b
+ollama pull qwen2.5:1.5b
+ollama run qwen2.5:1.5b
 python -m uvicorn app.main:app --app-dir apps/api --reload --host 127.0.0.1 --port 8000
 npm.cmd run dev:web
 ```

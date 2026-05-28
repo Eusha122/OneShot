@@ -74,3 +74,7 @@ temp/
 # Personal Notes
 # =========================
 production tasks.md
+
+# Vector DB / OCR Storage
+storage/
+apps/api/oneshot.db

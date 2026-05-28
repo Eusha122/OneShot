@@ -162,12 +162,8 @@ class HybridRetriever:
         
         print(f"[DEBUG] Retrieved chunks: {len(final_results)}")
         for r in final_results[:3]:
-            print(f"[DEBUG] Score: {r['score']}")
-            print(f"[DEBUG] Preview: {r['preview_content'][:300]}")
-        
-        print(f"[DEBUG] Retrieved chunks: {len(final_results)}")
-        for r in final_results[:3]:
-            print(f"[DEBUG] Score: {r['score']}")
+            print(f"[DEBUG] Score: {r['score']:.3f}")
+            print(f"[DEBUG] Subject: {r['subject']} | Chapter: {r['chapter']}")
             print(f"[DEBUG] Preview: {r['preview_content'][:300]}")
         
         logger.info(f"[RETRIEVER] retrieved_chunks={len(final_results)}")

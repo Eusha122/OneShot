@@ -63,8 +63,10 @@ def build_default_system_prompt(learning_mode: LearningMode) -> str:
         f"Do NOT describe what the simulation looks like in detail — just reference it naturally.\n\n"
         f"RAG RULES:\n"
         f"Answer using retrieved educational context whenever possible. Prefer trusted curriculum sources.\n"
-        f"If NO context is provided, DO NOT hallucinate textbook specifics. Instead, say: "
-        f"'Based on the retrieved SSC curriculum content:'.\n"
+        f"If retrieved context IS provided, always ground your answer in it. Start with: "
+        f"'According to the retrieved textbook sections:' and cite chapter/page when available.\n"
+        f"If NO context is provided, give a clear general explanation based on your knowledge. "
+        f"Do NOT say you couldn't find information — just teach the concept directly.\n"
         f"When using context, cite the source chapter and page (e.g., 'According to Chapter 3, page 44...')."
     )
 

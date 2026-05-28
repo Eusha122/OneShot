@@ -9,6 +9,33 @@ from app.adapters.chroma_store import chroma_store
 
 logger = logging.getLogger(__name__)
 
+import asyncio
+
+def _run_heavy_ingestion(document_id: int, file_path: str, base_metadata: dict):
+    # 2. Extract text (PyMuPDF)
+    logger.info(f"Extracting text from {file_path}")
+    pages = extractor.extract_text(file_path)
+
+    if not pages:
+        raise ValueError("No text extracted from document.")
+
+    # 3. Chunk text
+    logger.info(f"Chunking document {document_id}")
+    chunks = chunker.chunk_document(pages, base_metadata)
+
+    if not chunks:
+        raise ValueError("No chunks generated from document.")
+
+    # 4. Generate embeddings
+    logger.info(f"Generating embeddings for {len(chunks)} chunks")
+    texts = [chunk["content"] for chunk in chunks]
+    embeddings = embeddings_engine.embed_batch(texts)
+
+    # 5. Store vectors in ChromaDB
+    logger.info(f"Upserting to ChromaDB for document {document_id}")
+    chroma_store.upsert_chunks(document_id, chunks, embeddings)
+    
+    return pages, chunks
 
 async def process_document_task(document_id: int, file_path: str):
     """
@@ -28,35 +55,17 @@ async def process_document_task(document_id: int, file_path: str):
 
             doc.status = DocumentStatus.processing
             await session.commit()
-
-            # 2. Extract text (PyMuPDF)
-            logger.info(f"Extracting text from {file_path}")
-            pages = extractor.extract_text(file_path)
-
-            if not pages:
-                raise ValueError("No text extracted from document.")
-
-            # 3. Chunk text
-            logger.info(f"Chunking document {document_id}")
+            
             base_metadata = {
                 "source_file": doc.original_name,
                 "source_type": doc.source_type or "uploaded_notes",
                 "trust_level": doc.trust_level or "variable",
             }
 
-            chunks = chunker.chunk_document(pages, base_metadata)
-
-            if not chunks:
-                raise ValueError("No chunks generated from document.")
-
-            # 4. Generate embeddings
-            logger.info(f"Generating embeddings for {len(chunks)} chunks")
-            texts = [chunk["content"] for chunk in chunks]
-            embeddings = embeddings_engine.embed_batch(texts)
-
-            # 5. Store vectors in ChromaDB
-            logger.info(f"Upserting to ChromaDB for document {document_id}")
-            chroma_store.upsert_chunks(document_id, chunks, embeddings)
+            # Run heavy CPU tasks in a separate thread to avoid blocking FastAPI event loop
+            pages, chunks = await asyncio.to_thread(
+                _run_heavy_ingestion, document_id, file_path, base_metadata
+            )
 
             # 6. Save chunk metadata to SQLite
             for i, chunk in enumerate(chunks):

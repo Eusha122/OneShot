@@ -39,6 +39,13 @@ services:
     ports:
       - "8080:8080"
 
+  redis:
+    image: redis:alpine
+    container_name: visual-learning-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+
 volumes:
   postgres_data:
   chroma_data:

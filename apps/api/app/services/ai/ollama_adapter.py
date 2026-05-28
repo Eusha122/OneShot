@@ -31,7 +31,10 @@ class OllamaAdapter:
                     "model": self.model,
                     "messages": self._build_messages(prompt, history, system_prompt),
                     "stream": False,
-                    "options": {"temperature": temperature},
+                    "options": {
+                        "temperature": temperature,
+                        "num_ctx": 2048
+                    },
                 },
             )
             response.raise_for_status()
@@ -55,7 +58,10 @@ class OllamaAdapter:
                     "model": self.model,
                     "messages": self._build_messages(prompt, history, system_prompt),
                     "stream": True,
-                    "options": {"temperature": temperature},
+                    "options": {
+                        "temperature": temperature,
+                        "num_ctx": 2048
+                    },
                 },
             ) as response:
                 response.raise_for_status()
@@ -75,6 +81,6 @@ class OllamaAdapter:
                 "role": "system",
                 "content": system_prompt or DEFAULT_SYSTEM_PROMPT,
             },
-            *[message.model_dump() for message in history[-8:]],
+            *[message.model_dump() for message in history[-4:]],
             {"role": "user", "content": prompt},
         ]
