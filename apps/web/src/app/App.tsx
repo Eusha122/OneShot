@@ -4,7 +4,7 @@ import { ArrowUp, Atom, CheckCircle, ChevronRight, Loader, Menu, Mic, Paperclip,
 import { AssistantMarkdown } from "../features/chat/AssistantMarkdown";
 import { VisualBlockRenderer } from "../features/visual-blocks/VisualBlockRenderer";
 import type { LearningVisualBlock } from "../features/visual-blocks/visualBlockTypes";
-import { getConversation, getConversations, getDocumentStatus, sendChatMessage, uploadDocument, LearningMode, SubjectType, Conversation } from "../lib/chatApi";
+import { getConversation, getConversations, getDocumentStatus, sendChatMessage, uploadDocument, LearningMode, SubjectType, Conversation, createLearnerProfile, createConversation, streamChatMessage, streamExamTransition } from "../lib/chatApi";
 import { ProfileModal } from "../features/profile/ProfileModal";
 import { AttachmentMenu } from "../components/chat/AttachmentMenu";
 
@@ -377,6 +377,7 @@ export function App() {
         message: content,
         conversationId: currentConversationId,
         activeDocumentIds,
+        subject: selectedSubject,
         onEvent: (event) => {
           if (event.type === "meta") {
             const validBlocks = Array.isArray(event.visual_blocks) ? event.visual_blocks.filter(Boolean) : [];
@@ -403,6 +404,14 @@ export function App() {
             setActivePipelineStages(prev => {
               if (prev.includes(event.label)) return prev;
               return [...prev, event.label];
+            });
+            return;
+          }
+          
+          if (event.type === "context") {
+            setActivePipelineStages(prev => {
+              if (prev.includes(event.message)) return prev;
+              return [event.message, ...prev];
             });
             return;
           }
@@ -632,16 +641,15 @@ export function App() {
                 pipelineItems={activePipelineStages}
                 isGenerating={isGenerating}
                 selectedMode={selectedMode}
+                selectedSubject={selectedSubject}
                 textareaRef={textareaRef}
                 activeDocuments={activeDocuments}
                 onFileUpload={handleFileUpload}
                 onImageUpload={handleImageUpload}
-                onRemoveDocument={removeDocument}
-                onDraftChange={(value) => {
-                  setDraft(value);
-                  requestAnimationFrame(resizeTextarea);
-                }}
+                onRemoveDocument={(id) => setActiveDocuments((prev) => prev.filter((d) => d.id !== id))}
+                onDraftChange={setDraft}
                 onModeChange={setSelectedMode}
+                onSubjectChange={setSelectedSubject}
                 onSubmit={submitMessage}
               />
             </>
@@ -1104,6 +1112,7 @@ function Composer({
   pipelineItems,
   isGenerating,
   selectedMode,
+  selectedSubject,
   textareaRef,
   activeDocuments,
   onFileUpload,
@@ -1111,6 +1120,7 @@ function Composer({
   onRemoveDocument,
   onDraftChange,
   onModeChange,
+  onSubjectChange,
   onSubmit,
 }: {
   draft: string;
@@ -1118,6 +1128,7 @@ function Composer({
   pipelineItems: string[];
   isGenerating: boolean;
   selectedMode: LearningMode;
+  selectedSubject: SubjectType;
   textareaRef: React.MutableRefObject<HTMLTextAreaElement | null>;
   activeDocuments: ActiveDocument[];
   onFileUpload: (file: File) => void;
@@ -1125,6 +1136,7 @@ function Composer({
   onRemoveDocument: (id: number) => void;
   onDraftChange: (value: string) => void;
   onModeChange: (mode: LearningMode) => void;
+  onSubjectChange: (subject: SubjectType) => void;
   onSubmit: (explicitContent?: string) => void;
 }) {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -1300,9 +1312,26 @@ function Composer({
                   onSubmit();
                 }
               }}
-              placeholder="Ask about a concept or request a visual explanation"
+              placeholder={activeDocuments.length > 0 ? "Ask a question about the documents..." : "Ask about a concept or request a visual explanation"}
               className="pretty-scroll mb-1 max-h-[200px] min-h-10 flex-1 resize-none bg-transparent px-2 py-2 text-[15px] leading-relaxed text-[#f5f5f5] outline-none placeholder:text-[#6b7280]"
             />
+
+            {/* Subject Selector Dropdown */}
+            <div className="absolute right-24 bottom-3">
+              <select 
+                value={selectedSubject} 
+                onChange={(e) => onSubjectChange(e.target.value as SubjectType)}
+                className="h-8 rounded-lg bg-[#222] px-2 text-xs font-medium text-[#f5f5f5] outline-none hover:bg-[#2a2a2a] transition border border-[#333] cursor-pointer"
+              >
+                <option value="auto">Auto Detect</option>
+                <option value="physics">Physics</option>
+                <option value="chemistry">Chemistry</option>
+                <option value="biology">Biology</option>
+                <option value="mathematics">Mathematics</option>
+                <option value="ict">ICT</option>
+                <option value="general">General Chat</option>
+              </select>
+            </div>
 
             <button
               type="button"

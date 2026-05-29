@@ -107,3 +107,6 @@ class DocumentChunk(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
     
     document = relationship("Document", back_populates="chunks")
+
+# Import docs models to register with Base
+from app.db.docs.models import DocsSystemConfig, DocsSection, DocsVersion, TeamMember

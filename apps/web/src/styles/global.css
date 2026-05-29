@@ -240,3 +240,130 @@ button:disabled {
   color: #f5f5f5;
   font-size: 1.04rem;
 }
+
+/* --- Docs Premium Markdown Styles --- */
+
+/* --- Docs Premium Markdown Styles & Spacing System --- */
+
+:root {
+  --docs-section-spacing: 64px;
+}
+
+@media (min-width: 768px) {
+  :root {
+    --docs-section-spacing: 96px;
+  }
+}
+
+.docs-section-spacing {
+  padding-top: var(--docs-section-spacing);
+  padding-bottom: var(--docs-section-spacing);
+}
+
+.docs-markdown {
+  color: #d1d5db;
+  line-height: 1.8;
+  font-size: 1.125rem;
+  max-width: 850px;
+}
+
+.docs-markdown h1,
+.docs-markdown h2,
+.docs-markdown h3 {
+  color: #ffffff;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  margin-top: 3.5rem;
+  margin-bottom: 1.5rem;
+}
+
+.docs-markdown h1 {
+  font-size: 3rem;
+  line-height: 1.1;
+}
+
+.docs-markdown h2 {
+  font-size: 2.25rem;
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.docs-markdown h3 {
+  font-size: 1.5rem;
+  font-weight: 600;
+}
+
+.docs-markdown p {
+  margin-bottom: 1.5rem;
+}
+
+.docs-markdown p:last-child {
+  margin-bottom: 0;
+}
+
+.docs-markdown strong {
+  color: #ffffff;
+  font-weight: 600;
+}
+
+.docs-markdown ul {
+  margin-top: 1rem;
+  margin-bottom: 1.5rem;
+  padding-left: 1.25rem;
+  list-style-type: disc;
+}
+
+.docs-markdown li {
+  margin-bottom: 0.5rem;
+  padding-left: 0.5rem;
+}
+
+.docs-markdown li::marker {
+  color: #6b7280;
+}
+
+.docs-markdown code {
+  background: rgba(255,255,255,0.08);
+  padding: 0.2rem 0.4rem;
+  border-radius: 6px;
+}
+
+.highlight-chip {
+  background: linear-gradient(135deg, rgba(245,158,11,0.2) 0%, rgba(245,158,11,0.05) 100%);
+  border: 1px solid rgba(245,158,11,0.3);
+  color: #fbbf24;
+  padding: 0.25rem 0.6rem;
+  border-radius: 8px;
+  font-weight: 600;
+  box-shadow: 0 0 12px rgba(245,158,11,0.1);
+  display: inline-block;
+  line-height: 1.2;
+}
+
+.comparison-card {
+  background: #111;
+  border: 1px solid #1f1f1f;
+  border-radius: 12px;
+  padding: 1.5rem;
+  margin-top: 1rem;
+}
+
+.comparison-card-bad {
+  border-left: 4px solid #ef4444;
+}
+
+.comparison-card-good {
+  border-left: 4px solid #10b981;
+}
+
+.section-divider {
+  width: 100%;
+  height: 1px;
+  background: linear-gradient(
+    to right,
+    transparent,
+    rgba(255,255,255,0.12),
+    transparent
+  );
+  margin: 1.5rem 0;
+}
