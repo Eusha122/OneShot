@@ -1,11 +1,12 @@
 import React, { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { ArrowUp, Atom, CheckCircle, ChevronRight, Loader, Menu, Mic, Paperclip, PenTool, Plus, Search, Settings, Sigma, Upload, X, BarChart2 } from "lucide-react";
+import { ArrowUp, Atom, CheckCircle, ChevronRight, Loader, Menu, Mic, Paperclip, Camera, PenTool, Plus, Search, Settings, Sigma, Upload, X, BarChart2 } from "lucide-react";
 import { AssistantMarkdown } from "../features/chat/AssistantMarkdown";
 import { VisualBlockRenderer } from "../features/visual-blocks/VisualBlockRenderer";
 import type { LearningVisualBlock } from "../features/visual-blocks/visualBlockTypes";
-import { streamChatMessage, streamExamTransition, getConversations, getConversation, createConversation, createLearnerProfile, uploadDocument, getDocumentStatus, type Conversation } from "../lib/chatApi";
+import { getConversation, getConversations, getDocumentStatus, sendChatMessage, uploadDocument, LearningMode, SubjectType, Conversation } from "../lib/chatApi";
 import { ProfileModal } from "../features/profile/ProfileModal";
+import { AttachmentMenu } from "../components/chat/AttachmentMenu";
 
 type LearningMode =
   | "explain_simply"
@@ -47,6 +48,9 @@ export function App() {
   const [activeView, setActiveView] = useState<"chat" | "whiteboard" | "exams" | "dashboard">("chat");
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [selectedMode, setSelectedMode] = useState<LearningMode>("visual_mode");
+  const [selectedSubject, setSelectedSubject] = useState<SubjectType>(() => {
+    return (localStorage.getItem("oneshot_selected_subject") as SubjectType) || "auto";
+  });
   const [draft, setDraft] = useState("");
   const [messages, setMessages] = useState<Message[]>([]);
   const [isGenerating, setIsGenerating] = useState(false);
@@ -88,6 +92,10 @@ export function App() {
   useEffect(() => {
     localStorage.setItem(`oneshot_docs_${activeConversationId || "new"}`, JSON.stringify(activeDocuments));
   }, [activeDocuments, activeConversationId]);
+  
+  useEffect(() => {
+    localStorage.setItem("oneshot_selected_subject", selectedSubject);
+  }, [selectedSubject]);
 
   // Keep the ref in sync with state
   useEffect(() => {
@@ -208,6 +216,78 @@ export function App() {
 
   function removeDocument(id: number) {
     setActiveDocuments(prev => prev.filter(d => d.id !== id));
+  }
+
+  async function handleImageUpload(file: File) {
+    if (file.size > 5 * 1024 * 1024) {
+      alert("Image is too large. Maximum size is 5MB.");
+      return;
+    }
+
+    let currentConversationId = activeConversationId;
+    if (!currentConversationId) {
+       try {
+         const title = "Notebook Analysis";
+         const newConv = await createConversation(learnerId, title);
+         currentConversationId = newConv.id;
+         skipFetchRef.current = true;
+         setActiveConversationId(newConv.id);
+         setConversationsList(prev => [newConv, ...prev]);
+       } catch (error) {
+         console.error("Failed to create conversation", error);
+         return;
+       }
+    }
+
+    const userMessageId = crypto.randomUUID();
+    const assistantMessageId = crypto.randomUUID();
+    
+    // Append a user message to show the image is being processed
+    // Followed by a placeholder assistant message
+    setMessages((current) => [
+      ...current,
+      {
+        id: userMessageId,
+        role: "user",
+        content: `[Uploaded Image: ${file.name}]`,
+      },
+      {
+        id: assistantMessageId,
+        role: "assistant",
+        content: "",
+      }
+    ]);
+
+    setIsGenerating(true);
+    setActivePipelineStages([]);
+
+    try {
+      await streamImageAssessment({
+        file,
+        learnerId,
+        onEvent: (event) => {
+          if (event.stage === "reading" || event.stage === "identifying" || event.stage === "evaluating" || event.stage === "weak_topics") {
+            setActivePipelineStages((prev) => Array.from(new Set([...prev, event.message])));
+            if (event.text) {
+              setMessages((current) => current.map((msg) => msg.id === assistantMessageId ? { ...msg, content: `**Extracted:**\n\n> ${event.text}\n\n` } : msg));
+            }
+          } else if (event.stage === "extracted" && event.text) {
+            setMessages((current) => current.map((msg) => msg.id === assistantMessageId ? { ...msg, content: `**Extracted:**\n\n> ${event.text}\n\n` } : msg));
+          } else if (event.stage === "error") {
+            setMessages((current) => current.map((msg) => msg.id === assistantMessageId ? { ...msg, content: `Error: ${event.message}` } : msg));
+            setIsGenerating(false);
+          } else if (event.stage === "complete") {
+            const fb = `**Extracted:**\n\n> ${event.extracted_text}\n\n**Feedback:**\n${event.feedback}`;
+            setMessages((current) => current.map((msg) => msg.id === assistantMessageId ? { ...msg, content: fb } : msg));
+            setIsGenerating(false);
+          }
+        }
+      });
+    } catch (error: any) {
+      console.error(error);
+      setMessages((current) => current.map((msg) => msg.id === assistantMessageId ? { ...msg, content: `Failed to analyze image: ${error.message}` } : msg));
+      setIsGenerating(false);
+    }
   }
 
   async function submitMessage(explicitContent?: string) {
@@ -555,6 +635,7 @@ export function App() {
                 textareaRef={textareaRef}
                 activeDocuments={activeDocuments}
                 onFileUpload={handleFileUpload}
+                onImageUpload={handleImageUpload}
                 onRemoveDocument={removeDocument}
                 onDraftChange={(value) => {
                   setDraft(value);
@@ -1026,6 +1107,7 @@ function Composer({
   textareaRef,
   activeDocuments,
   onFileUpload,
+  onImageUpload,
   onRemoveDocument,
   onDraftChange,
   onModeChange,
@@ -1039,22 +1121,44 @@ function Composer({
   textareaRef: React.MutableRefObject<HTMLTextAreaElement | null>;
   activeDocuments: ActiveDocument[];
   onFileUpload: (file: File) => void;
+  onImageUpload: (file: File) => void;
   onRemoveDocument: (id: number) => void;
   onDraftChange: (value: string) => void;
   onModeChange: (mode: LearningMode) => void;
   onSubmit: (explicitContent?: string) => void;
 }) {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const imageInputRef = useRef<HTMLInputElement | null>(null);
   const [isDragging, setIsDragging] = useState(false);
+  const [showAttachmentMenu, setShowAttachmentMenu] = useState(false);
 
   const handleAttachClick = () => {
     fileInputRef.current?.click();
+  };
+
+  const handleCameraClick = () => {
+    imageInputRef.current?.click();
+  };
+
+  const handlePlusClick = () => {
+    if (document.activeElement instanceof HTMLElement) {
+      document.activeElement.blur();
+    }
+    setShowAttachmentMenu((prev) => !prev);
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
       onFileUpload(file);
+    }
+    e.target.value = "";
+  };
+
+  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      onImageUpload(file);
     }
     e.target.value = "";
   };
@@ -1076,6 +1180,8 @@ function Composer({
       const file = e.dataTransfer.files[0];
       if (file.type === "application/pdf" || file.name.endsWith(".pdf")) {
         onFileUpload(file);
+      } else if (file.type.startsWith("image/")) {
+        onImageUpload(file);
       }
     }
   };
@@ -1153,15 +1259,35 @@ function Composer({
               className="hidden"
               aria-hidden="true"
             />
+            <input
+              ref={imageInputRef}
+              type="file"
+              accept="image/*"
+              onChange={handleImageChange}
+              className="hidden"
+              aria-hidden="true"
+            />
 
-            <button
-              type="button"
-              aria-label="Attach learning material (PDF)"
-              onClick={handleAttachClick}
-              className="mb-1 grid h-10 w-10 shrink-0 place-items-center rounded-full bg-white/0 transition-all hover:bg-white/10 hover:text-white active:scale-95 text-[#9ca3af]"
-            >
-              <Paperclip size={18} />
-            </button>
+            <div className="relative flex items-center">
+              <button
+                type="button"
+                aria-label="Add attachment"
+                onClick={handlePlusClick}
+                className={`mb-1 grid h-10 w-10 shrink-0 place-items-center rounded-full transition-all active:scale-95 text-[#9ca3af] ${showAttachmentMenu ? 'bg-white/10 text-white' : 'bg-white/0 hover:bg-white/10 hover:text-white'}`}
+              >
+                <Plus size={18} />
+              </button>
+
+              <AnimatePresence>
+                {showAttachmentMenu && (
+                  <AttachmentMenu
+                    onClose={() => setShowAttachmentMenu(false)}
+                    onUploadPdf={handleAttachClick}
+                    onUploadImage={handleCameraClick}
+                  />
+                )}
+              </AnimatePresence>
+            </div>
 
             <textarea
               ref={textareaRef}

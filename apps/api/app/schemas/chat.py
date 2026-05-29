@@ -25,6 +25,7 @@ class ChatRequest(BaseModel):
     conversation_id: int | None = None
     history: list[ChatMessage] = Field(default_factory=list)
     active_document_ids: list[int] | None = None
+    subject: str | None = "auto"
 
 
 class VisualizeRequest(BaseModel):
@@ -77,6 +78,7 @@ class ChatResponse(BaseModel):
     visual_blocks: list[VisualBlock] | None = None
     sources: list[str] | None = None
     model: str
+    resolved_subject: str | None = None
 
 
 class ExamTransitionRequest(BaseModel):

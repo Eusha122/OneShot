@@ -110,6 +110,11 @@ async def create_chat_message(
     rag_results = []
     active_filenames = []
     
+    from app.services.ai.subject_detector import detect_subject
+    resolved_subject = request.subject
+    if not resolved_subject or resolved_subject == "auto":
+        resolved_subject = detect_subject(request.message)
+    
     if request.active_document_ids:
         logger.info(f"[CHAT] active_document_ids={request.active_document_ids}")
         try:
@@ -123,8 +128,13 @@ async def create_chat_message(
         filters = {}
         if request.active_document_ids:
             filters["document_ids"] = request.active_document_ids
+        if resolved_subject != "general":
+            filters["subject"] = resolved_subject
+            
+        # Optimize top_k based on subject filter
+        top_k = 3 if resolved_subject != "general" else 2
 
-        rag_results = retriever.retrieve(query=request.message, filters=filters, top_k=3)
+        rag_results = retriever.retrieve(query=request.message, filters=filters, top_k=top_k)
         context_text = "\n\n".join([f"Source: {r['source']} (Page {r['page']})\n{r['content'][:600]}{'...' if len(r['content']) > 600 else ''}" for r in rag_results])
         
         sources = list(set(r['source'] for r in rag_results))
@@ -134,7 +144,8 @@ async def create_chat_message(
         request.message, 
         request.learning_mode, 
         context=context_text,
-        active_document_filenames=active_filenames
+        active_document_filenames=active_filenames,
+        subject=resolved_subject
     )
 
     try:
@@ -220,6 +231,7 @@ async def create_chat_message(
         content=content,
         visual_blocks=visual_blocks,
         model=settings.ollama_model,
+        resolved_subject=resolved_subject
     )
 
 from app.schemas.chat import VisualizeRequest, VisualBlock
@@ -500,8 +512,17 @@ async def websocket_chat_stream(
         request = ChatRequest(**data)
         
         adapter = OllamaAdapter()
+        
+        from app.services.ai.subject_detector import detect_subject
+        resolved_subject = request.subject
+        if not resolved_subject or resolved_subject == "auto":
+            resolved_subject = detect_subject(request.message)
+            
+        if resolved_subject != "general":
+            await websocket.send_json({'type': 'context', 'message': f"⚛ {resolved_subject.capitalize()} Context Active"})
+            
         visual_blocks = [block.model_dump() for block in infer_visual_blocks(request.message)]
-        logger.info(f"WS Stream request received with active_document_ids: {request.active_document_ids}")
+        logger.info(f"WS Stream request received with active_document_ids: {request.active_document_ids}, subject: {resolved_subject}")
         await websocket.send_json({'type': 'meta', 'model': settings.ollama_model, 'visual_blocks': visual_blocks})
         
         rag_results = []
@@ -524,8 +545,12 @@ async def websocket_chat_stream(
             filters = {}
             if request.active_document_ids:
                 filters["document_ids"] = request.active_document_ids
+            if resolved_subject != "general":
+                filters["subject"] = resolved_subject
+                
+            top_k = 3 if resolved_subject != "general" else 2
 
-            rag_results = await asyncio.to_thread(retriever.retrieve, query=request.message, filters=filters, top_k=3)
+            rag_results = await asyncio.to_thread(retriever.retrieve, query=request.message, filters=filters, top_k=top_k)
             context_text = "\n\n".join([f"Source: {r['source']} (Page {r['page']})\n{r['content'][:600]}{'...' if len(r['content']) > 600 else ''}" for r in rag_results])
             
             for chunk in rag_results:
@@ -574,7 +599,8 @@ async def websocket_chat_stream(
             request.message, 
             request.learning_mode, 
             context=context_text,
-            active_document_filenames=active_filenames
+            active_document_filenames=active_filenames,
+            subject=resolved_subject
         )
         
         await websocket.send_json({'type': 'pipeline', 'stage': 'generating_answer', 'label': 'Generating answer...'})

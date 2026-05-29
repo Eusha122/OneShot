@@ -20,6 +20,7 @@ class Settings(BaseSettings):
     chroma_host: str = "localhost"
     chroma_port: int = 8001
     searxng_base_url: str = "http://localhost:8080"
+    google_api_key: str = ""
     cors_extra_origins: list[str] = Field(default_factory=list)
 
     model_config = SettingsConfigDict(

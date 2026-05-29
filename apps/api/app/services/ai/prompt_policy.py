@@ -28,11 +28,14 @@ FORMATTING_RULES = (
 def build_document_system_prompt(
     learning_mode: LearningMode,
     active_document_filenames: list[str],
+    subject: str | None = None
 ) -> str:
     """System prompt used when user has attached documents. Forces document-grounded QA."""
     filenames = ", ".join(active_document_filenames)
+    subject_injection = f"You are currently tutoring the subject: {subject}.\n\n" if subject and subject != "general" else ""
+    
     return (
-        f"You are a document-grounded educational assistant. "
+        f"You are a document-grounded educational assistant. {subject_injection}"
         f"The user has uploaded the following documents: {filenames}.\n\n"
         f"CRITICAL RULES:\n"
         f"- You MUST answer using ONLY the retrieved document context provided below.\n"
@@ -54,8 +57,10 @@ def build_document_system_prompt(
     )
 
 
-def build_default_system_prompt(learning_mode: LearningMode, learner_profile: dict = None) -> str:
+def build_default_system_prompt(learning_mode: LearningMode, learner_profile: dict = None, subject: str | None = None) -> str:
     """System prompt used when NO documents are attached. General tutor mode."""
+    
+    subject_injection = f"You are currently tutoring the subject: {subject.capitalize()}.\n\n" if subject and subject != "general" else ""
     
     adaptation = ""
     if learner_profile:
@@ -67,6 +72,7 @@ def build_default_system_prompt(learning_mode: LearningMode, learner_profile: di
     return (
         f"You are OneShot, an interactive STEM tutor. "
         f"Your goal is to explain math and physics problems in the simplest, easiest, and most conceptual way possible.\n\n"
+        f"{subject_injection}"
         f"{adaptation}"
         f"Learning mode: {MODE_INSTRUCTIONS[learning_mode]}\n\n"
         f"{FORMATTING_RULES}\n\n"
@@ -89,6 +95,7 @@ def build_tutor_prompt(
     context: str = "",
     active_document_filenames: list[str] | None = None,
     learner_profile: dict = None,
+    subject: str | None = None
 ) -> tuple[str, str]:
     """
     Returns (system_prompt, user_prompt) as separate strings.
@@ -97,9 +104,9 @@ def build_tutor_prompt(
     - user_prompt: goes into the 'user' role message (includes context + question)
     """
     if active_document_filenames:
-        system_prompt = build_document_system_prompt(learning_mode, active_document_filenames)
+        system_prompt = build_document_system_prompt(learning_mode, active_document_filenames, subject=subject)
     else:
-        system_prompt = build_default_system_prompt(learning_mode, learner_profile)
+        system_prompt = build_default_system_prompt(learning_mode, learner_profile, subject=subject)
 
     user_prompt = (
         f"--- RETRIEVED CONTEXT ---\n"

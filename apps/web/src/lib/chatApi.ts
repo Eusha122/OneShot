@@ -8,6 +8,16 @@ export type LearningMode =
   | "fast_revision"
   | "challenge_me";
 
+export type SubjectType =
+  | "auto"
+  | "physics"
+  | "chemistry"
+  | "biology"
+  | "mathematics"
+  | "higher-mathematics"
+  | "ict"
+  | "general";
+
 export interface ChatHistoryMessage {
   role: "user" | "assistant" | "system";
   content: string;
@@ -20,6 +30,7 @@ export interface ChatMessage extends ChatHistoryMessage {
   visual_blocks?: any[];
   mode?: string;
   sources?: any[];
+  resolved_subject?: string;
 }
 
 export interface Conversation {
@@ -137,6 +148,63 @@ export async function evaluateAnswer(expectedAnswer: string, studentAnswer: stri
   return response.json();
 }
 
+export async function streamImageAssessment({
+  file,
+  learnerId,
+  onEvent,
+}: {
+  file: File;
+  learnerId?: number;
+  onEvent: (event: any) => void;
+}) {
+  const formData = new FormData();
+  formData.append("image", file);
+  if (learnerId) formData.append("learner_id", String(learnerId));
+
+  const response = await fetch(`${API_BASE_URL}/api/assessment/upload-answer`, {
+    method: "POST",
+    body: formData,
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => null);
+    throw new Error(errorData?.detail || `Upload failed with status ${response.status}`);
+  }
+
+  if (!response.body) throw new Error("No response body");
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder("utf-8");
+
+  try {
+    let buffer = "";
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split("\n\n");
+      buffer = lines.pop() || "";
+
+      for (const line of lines) {
+        if (line.startsWith("data: ")) {
+          const dataStr = line.slice(6);
+          if (dataStr.trim()) {
+            try {
+              const eventData = JSON.parse(dataStr);
+              onEvent(eventData);
+            } catch (e) {
+              console.error("Failed to parse SSE JSON", dataStr);
+            }
+          }
+        }
+      }
+    }
+  } finally {
+    reader.releaseLock();
+  }
+}
+
 export async function getConversations(learnerId: number): Promise<Conversation[]> {
   const response = await fetch(`${API_BASE_URL}/api/conversations/?learner_id=${learnerId}`);
   if (!response.ok) throw new Error("Failed to fetch conversations");
@@ -181,12 +249,14 @@ export async function sendChatMessage({
   message,
   conversationId,
   activeDocumentIds,
+  subject,
 }: {
   history: ChatHistoryMessage[];
   learningMode: LearningMode;
   message: string;
   conversationId?: number;
   activeDocumentIds?: number[];
+  subject?: SubjectType;
 }) {
   const response = await fetch(`${API_BASE_URL}/api/chat/message`, {
     body: JSON.stringify({
@@ -195,6 +265,7 @@ export async function sendChatMessage({
       message,
       conversation_id: conversationId,
       active_document_ids: activeDocumentIds,
+      subject,
     }),
     headers: {
       "Content-Type": "application/json",
