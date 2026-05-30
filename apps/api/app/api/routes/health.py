@@ -16,29 +16,32 @@ def health_check() -> dict[str, str]:
 
 @router.get("/api/system/inference-status")
 async def inference_status():
-    from app.services.ai.ollama_client import ollama_client, InfrastructureError
+    from app.services.ai.ai_router import ai_router
+    from app.services.ai.ollama_client import InfrastructureError
     import time
-    
+
     start_time = time.time()
     try:
-        health_data = await ollama_client.check_health()
+        health_data = await ai_router.check_health()
         latency_ms = int((time.time() - start_time) * 1000)
-        cooldown = ollama_client.cooldown_until.replace(tzinfo=UTC) if ollama_client.cooldown_until else None
+        cooldown = ai_router.cooldown_until
+        if cooldown:
+            cooldown = cooldown.replace(tzinfo=UTC)
         return {
-            "ollama": "healthy",
-            "model": ollama_client.model,
+            **health_data,
             "latency_ms": latency_ms,
+            "circuit_breaker_active": bool(cooldown and datetime.now(UTC) < cooldown),
             "last_failure": cooldown.isoformat() if cooldown else None,
-            "circuit_breaker_active": bool(cooldown and datetime.now(UTC) < cooldown)
         }
-    except InfrastructureError as e:
-        cooldown = ollama_client.cooldown_until.replace(tzinfo=UTC) if ollama_client.cooldown_until else None
-        circuit_breaker_active = cooldown is not None and datetime.now(UTC) < cooldown
+    except Exception as e:
+        cooldown = ai_router.cooldown_until
+        if cooldown:
+            cooldown = cooldown.replace(tzinfo=UTC)
         return {
-            "ollama": "degraded",
-            "model": ollama_client.model,
-            "latency_ms": None,
+            "provider": ai_router.provider,
+            "status": "degraded",
             "error": str(e),
+            "latency_ms": None,
+            "circuit_breaker_active": bool(cooldown and datetime.now(UTC) < cooldown),
             "last_failure": cooldown.isoformat() if cooldown else datetime.now(UTC).isoformat(),
-            "circuit_breaker_active": circuit_breaker_active
         }

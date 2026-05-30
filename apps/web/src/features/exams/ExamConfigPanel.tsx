@@ -46,14 +46,16 @@ export function ExamConfigPanel({ onGenerate, isGenerating }: ExamConfigPanelPro
     // Check inference health
     getInferenceStatus()
       .then((res) => {
-        if (res.ollama === "healthy") {
+        // Healthy if any active backend is up: local Ollama OR cloud AI
+        const isHealthy = res.ollama === "healthy" || res.cloud === "healthy";
+        if (isHealthy) {
           setInferenceStatus("healthy");
         } else {
           setInferenceStatus("degraded");
-          setInferenceError(res.error || "Inference service unavailable");
+          setInferenceError(res.error || res.cloud_error || res.ollama_error || "Inference service unavailable");
         }
       })
-      .catch((err) => {
+      .catch(() => {
         setInferenceStatus("degraded");
         setInferenceError("Could not reach backend to check AI health.");
       });

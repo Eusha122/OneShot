@@ -13,7 +13,7 @@ from app.db.repositories import MessageRepository
 from sqlalchemy import select
 from app.schemas.chat import ChatRequest, ChatResponse, ExamTransitionRequest
 from app.schemas.domain import MessageCreate
-from app.services.ai.ollama_client import ollama_client
+from app.services.ai.ai_router import ai_router, InfrastructureError, InferenceError
 from app.services.ai.prompt_policy import build_tutor_prompt
 from app.services.ai.visual_blocks import infer_visual_blocks
 from app.services.rag.retriever import retriever
@@ -30,7 +30,7 @@ async def stream_exam_transition(
     request: ExamTransitionRequest,
     session: AsyncSessionDep
 ) -> StreamingResponse:
-    adapter = ollama_client
+    adapter = ai_router
     
     req_id = request.request_id or "unknown"
     
@@ -130,7 +130,7 @@ async def create_chat_message(
     request: ChatRequest,
     session: AsyncSessionDep
 ) -> ChatResponse:
-    adapter = ollama_client
+    adapter = ai_router
     
     # Retrieve context if not a simple greeting
     context_text = ""
@@ -329,7 +329,7 @@ async def stream_chat_message(
     request: ChatRequest,
     session: AsyncSessionDep
 ) -> StreamingResponse:
-    adapter = ollama_client
+    adapter = ai_router
     visual_blocks = [block.model_dump() for block in infer_visual_blocks(request.message)]
     
     logger.info(f"Stream request received with active_document_ids: {request.active_document_ids}")
@@ -538,7 +538,7 @@ async def websocket_chat_stream(
         data = await websocket.receive_json()
         request = ChatRequest(**data)
         
-        adapter = ollama_client
+        adapter = ai_router
         
         from app.services.ai.subject_detector import detect_subject
         resolved_subject = request.subject

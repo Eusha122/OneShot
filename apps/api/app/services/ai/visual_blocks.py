@@ -47,9 +47,15 @@ User message: "{message}"
 
 Return ONLY a valid JSON object (no markdown, no backticks).
 """
-    url = "http://localhost:11434/api/generate"
+    from app.core.inference_settings import inference_settings
+    # Skip the direct Ollama call when running in production/cloud mode —
+    # Ollama isn't available and the heuristic fallback handles detection fine.
+    if inference_settings.ai_provider != "local":
+        return None
+
+    url = f"{inference_settings.ollama_base_url}/api/generate"
     data = {
-        "model": "qwen2.5:3b",
+        "model": inference_settings.ollama_model,
         "prompt": prompt,
         "format": "json",
         "stream": False

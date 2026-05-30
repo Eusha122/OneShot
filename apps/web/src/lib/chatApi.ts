@@ -153,7 +153,15 @@ export async function evaluateAnswer(expectedAnswer: string, studentAnswer: stri
   return response.json();
 }
 
-export async function getInferenceStatus(): Promise<{ ollama: string; model: string; error?: string }> {
+export async function getInferenceStatus(): Promise<{
+  provider?: string;
+  ollama?: string;
+  cloud?: string;
+  model?: string;
+  error?: string;
+  cloud_error?: string;
+  ollama_error?: string;
+}> {
   const response = await fetch(`${API_BASE_URL}/api/system/inference-status`);
   if (!response.ok) {
     throw new Error("Failed to fetch inference status");

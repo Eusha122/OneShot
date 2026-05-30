@@ -22,22 +22,38 @@ from app.db.database import sessionmanager
 async def lifespan(app: FastAPI):
     init_storage()
     
-    # Validate Ollama inference on startup
     import logging
-    from app.services.ai.ollama_client import ollama_client, InfrastructureError
-    logger = logging.getLogger(__name__)
     import asyncio
-    try:
-        logger.info("[STARTUP] Validating Ollama inference service...")
-        await asyncio.wait_for(ollama_client.check_health(), timeout=5.0)
-        logger.info("[STARTUP] Ollama inference service is healthy.")
-    except Exception as e:
-        logger.critical(f"[STARTUP] Local AI inference degraded: {e}. Some features will be disabled.")
-        
+    from app.services.ai.ai_router import ai_router
+    from app.core.inference_settings import inference_settings
+    logger = logging.getLogger(__name__)
+
+    provider = inference_settings.ai_provider
+    logger.info("[STARTUP] AI provider: %s", provider)
+
+    if provider in ("local", "fallback"):
+        try:
+            logger.info("[STARTUP] Validating Ollama inference service...")
+            await asyncio.wait_for(ai_router._ollama.check_health(), timeout=5.0)
+            logger.info("[STARTUP] Ollama is healthy.")
+        except Exception as e:
+            if provider == "fallback":
+                logger.warning("[STARTUP] Ollama degraded (%s). Cloud fallback will be used.", e)
+            else:
+                logger.critical("[STARTUP] Ollama unavailable: %s. AI features disabled.", e)
+
+    if provider in ("production", "fallback"):
+        try:
+            logger.info("[STARTUP] Validating cloud AI endpoint...")
+            await asyncio.wait_for(ai_router._get_cloud().check_health(), timeout=10.0)
+            logger.info("[STARTUP] Cloud AI is healthy.")
+        except Exception as e:
+            logger.warning("[STARTUP] Cloud AI health check failed: %s", e)
+
     yield
     if sessionmanager._engine is not None:
         await sessionmanager.close()
-    await ollama_client.close()
+    await ai_router.close()
 
 
 def create_app() -> FastAPI:

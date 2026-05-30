@@ -3,7 +3,8 @@ import logging
 import httpx
 import uuid
 from typing import Optional
-from app.services.ai.ollama_client import ollama_client, ValidationError, InfrastructureError, InferenceError
+from app.services.ai.ai_router import ai_router, InfrastructureError, InferenceError
+from app.services.ai.ollama_client import ValidationError
 from app.data.curriculum import get_topic_list_string, get_subject_rules
 
 logger = logging.getLogger(__name__)
@@ -11,7 +12,7 @@ logger = logging.getLogger(__name__)
 
 class ExamGenerator:
     def __init__(self):
-        self.client = ollama_client
+        self.client = ai_router
 
     async def generate_exam(
         self,
