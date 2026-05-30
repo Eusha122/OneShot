@@ -81,9 +81,9 @@ class OllamaClient:
             self._record_failure()
             raise InfrastructureError(f"Ollama health check failed: {e}")
 
-    async def generate(self, prompt: str, history: list[ChatMessage], system_prompt: str | None = None, temperature: float = 0.7, response_format: str | None = None) -> str:
+    async def generate(self, prompt: str, history: list[ChatMessage], system_prompt: str | None = None, temperature: float = 0.7, response_format: str | None = None, timeout: int | None = None) -> str:
         self._check_circuit_breaker()
-        
+
         payload = {
             "model": self.model,
             "prompt": self._build_prompt(prompt, history, system_prompt),
@@ -93,13 +93,15 @@ class OllamaClient:
                 "num_ctx": 4096
             },
         }
-        
+
         if response_format == "json":
             payload["format"] = "json"
 
         logger.info(f"[OLLAMA] Generating response using model {self.model}...")
         endpoint = getattr(self, "active_endpoint", "/api/generate")
-        
+        # Use caller-supplied timeout or fall back to the client default
+        request_timeout = timeout if timeout is not None else self.timeout
+
         import asyncio
         max_retries = 2
         for attempt in range(max_retries + 1):
@@ -107,10 +109,11 @@ class OllamaClient:
                 response = await self._client.post(
                     f"{self.base_url}{endpoint}",
                     json=payload,
+                    timeout=request_timeout,
                 )
                 response.raise_for_status()
                 self._record_success()
-                
+
                 try:
                     data = response.json()
                     content = data.get("response", "")
@@ -127,11 +130,19 @@ class OllamaClient:
                 if status in (404, 401, 400):
                     logger.exception(f"Ollama inference request failed: Client error ({status})")
                     raise InfrastructureError(f"Ollama inference service unavailable ({status})")
-                
+
                 if attempt == max_retries:
                     raise InfrastructureError(f"Ollama HTTP error after {max_retries} retries: {status}")
-                
+
                 logger.warning(f"[OLLAMA] Transient 5xx error ({status}). Retrying {attempt + 1}/{max_retries}...")
+                await asyncio.sleep(2 ** attempt)
+            except httpx.ReadTimeout:
+                # A timeout during generation is a per-request slowness, not an infra failure.
+                # Do NOT record it as a circuit-breaker failure — it would unfairly trip the breaker
+                # for normal chat streaming which is fast.
+                logger.warning(f"[OLLAMA] ReadTimeout on attempt {attempt + 1}/{max_retries + 1} (timeout={request_timeout}s)")
+                if attempt == max_retries:
+                    raise InfrastructureError(f"Ollama timed out after {max_retries + 1} attempts ({request_timeout}s each)")
                 await asyncio.sleep(2 ** attempt)
             except httpx.RequestError as e:
                 self._record_failure()
@@ -139,10 +150,10 @@ class OllamaClient:
                 if isinstance(e, httpx.ConnectError):
                     logger.exception("Ollama inference request failed: Connection Refused")
                     raise InfrastructureError(f"Ollama connection refused: {e}")
-                
+
                 if attempt == max_retries:
                     raise InfrastructureError(f"Ollama connection/timeout error after {max_retries} retries: {e}")
-                    
+
                 logger.warning(f"[OLLAMA] Transient request error ({type(e).__name__}). Retrying {attempt + 1}/{max_retries}...")
                 await asyncio.sleep(2 ** attempt)
 

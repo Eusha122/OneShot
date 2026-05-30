@@ -1,11 +1,14 @@
 import React, { useMemo } from "react";
 import { motion, type Variants } from "framer-motion";
-import { CheckCircle2, TrendingUp, AlertTriangle, Zap, Target, BookOpen } from "lucide-react";
+import { CheckCircle2, TrendingUp, AlertTriangle, Zap, Target, BookOpen, XCircle } from "lucide-react";
 
 interface MistakeSummary {
   chapter?: string;
   concepts?: string[];
   feedback?: string;
+  question?: string;
+  user_answer?: string;
+  correct_answer?: string;
 }
 
 export interface ExamResultSummaryProps {
@@ -16,6 +19,12 @@ export interface ExamResultSummaryProps {
   weak_areas?: string[];
   improvements?: string[];
   mistakes_summary?: MistakeSummary[];
+}
+
+/** VisualBlockRenderer passes data as a single `initialParams` prop — accept it here */
+interface VisualBlockWrapperProps {
+  initialParams?: Record<string, any>;
+  phase?: any;
 }
 
 /** Safe defaults — guarantees every field exists */
@@ -29,7 +38,17 @@ const SAFE_DEFAULTS: Required<ExamResultSummaryProps> = {
   mistakes_summary: [],
 };
 
-export const ExamResultSummary: React.FC<ExamResultSummaryProps> = (rawProps) => {
+export const ExamResultSummary: React.FC<VisualBlockWrapperProps> = ({ initialParams = {} }) => {
+  // Map backend field names (mastery_topics/weak_topics) to component field names
+  const rawProps: ExamResultSummaryProps = {
+    score: initialParams.score,
+    total: initialParams.total,
+    accuracy: initialParams.accuracy,
+    strong_areas: initialParams.strong_areas ?? initialParams.mastery_topics,
+    weak_areas: initialParams.weak_areas ?? initialParams.weak_topics,
+    improvements: initialParams.improvements,
+    mistakes_summary: initialParams.mistakes_summary,
+  };
   // Merge with safe defaults so nothing is ever undefined
   const props = { ...SAFE_DEFAULTS, ...rawProps };
   const { score, total, accuracy, strong_areas, weak_areas, improvements, mistakes_summary } = props;
@@ -216,28 +235,64 @@ export const ExamResultSummary: React.FC<ExamResultSummaryProps> = (rawProps) =>
           </motion.div>
         )}
 
-        {/* Mistakes / Recommendations */}
+        {/* Question Review — all questions, correct and wrong */}
         {safeMistakes.length > 0 && (
           <motion.div variants={itemVariants}>
             <h4 className="text-xs font-semibold uppercase tracking-wider text-gray-400 mb-3 flex items-center gap-2">
-              <BookOpen className="w-4 h-4 text-gray-400" /> AI Recommendations
+              <BookOpen className="w-4 h-4 text-gray-400" /> Question Review
             </h4>
-            <div className="space-y-3">
-              {safeMistakes.map((mistake, i) => (
-                <div key={i} className="p-3 rounded-lg bg-black/40 border border-white/5 flex gap-3 group hover:border-white/10 transition-all">
-                  <div className="mt-0.5">
-                    <div className="w-2 h-2 rounded-full bg-blue-500 group-hover:shadow-[0_0_8px_rgba(59,130,246,0.8)] transition-shadow" />
+            <div className="space-y-2.5">
+              {safeMistakes.map((mistake, i) => {
+                const correct = (mistake as any).is_correct ?? false;
+                return (
+                <div
+                  key={i}
+                  className={`p-3 rounded-lg border flex gap-3 transition-all ${
+                    correct
+                      ? "bg-green-500/5 border-green-500/15 hover:border-green-500/25"
+                      : "bg-red-500/5 border-red-500/15 hover:border-red-500/25"
+                  }`}
+                >
+                  <div className="mt-0.5 shrink-0">
+                    {correct
+                      ? <CheckCircle2 className="w-4 h-4 text-green-400" />
+                      : <XCircle className="w-4 h-4 text-red-400" />
+                    }
                   </div>
-                  <div>
-                    <div className="text-sm text-gray-200 mb-1">{mistake?.feedback || "Review this topic."}</div>
-                    <div className="flex gap-2">
+                  <div className="flex-1 min-w-0">
+                    {mistake?.question && (
+                      <div className="text-xs text-gray-300 mb-1.5 font-medium leading-relaxed">
+                        {mistake.question}
+                      </div>
+                    )}
+                    <div className={`text-sm mb-1.5 ${correct ? "text-green-300/80" : "text-gray-300"}`}>
+                      {mistake?.feedback || (correct ? "Correct!" : "Review this topic.")}
+                    </div>
+                    {!correct && (mistake?.user_answer || mistake?.correct_answer) && (
+                      <div className="flex flex-col gap-1 mt-2">
+                        {mistake?.user_answer && (
+                          <div className="flex items-start gap-2 text-xs">
+                            <span className="text-red-400/80 font-medium w-20 shrink-0 pt-px">Your answer:</span>
+                            <span className="text-red-300/70">{mistake.user_answer}</span>
+                          </div>
+                        )}
+                        {mistake?.correct_answer && (
+                          <div className="flex items-start gap-2 text-xs">
+                            <span className="text-green-400/80 font-medium w-20 shrink-0 pt-px">Correct:</span>
+                            <span className="text-green-300/80">{mistake.correct_answer}</span>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                    <div className="mt-2">
                       <span className="text-[10px] text-gray-500 uppercase tracking-wider">
                         {mistake?.chapter || "General"}
                       </span>
                     </div>
                   </div>
                 </div>
-              ))}
+              );
+            })}
             </div>
           </motion.div>
         )}

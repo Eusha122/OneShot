@@ -362,12 +362,14 @@ export async function streamExamTransition({
   learningMode,
   examResults,
   requestId,
+  conversationId,
   onEvent,
 }: {
   history: ChatHistoryMessage[];
   learningMode: LearningMode;
   examResults: any[];
   requestId?: string;
+  conversationId?: number;
   onEvent: (event: any) => void;
 }) {
   const response = await fetch(`${API_BASE_URL}/api/chat/exam_transition`, {
@@ -376,6 +378,7 @@ export async function streamExamTransition({
       learning_mode: learningMode,
       exam_results: examResults,
       request_id: requestId,
+      conversation_id: conversationId ?? null,
     }),
     headers: {
       "Content-Type": "application/json",

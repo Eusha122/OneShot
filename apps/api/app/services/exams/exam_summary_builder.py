@@ -22,31 +22,31 @@ def build_educational_summary(exam_results: list, request_id: str = "unknown") -
 
     correct_count = 0
     subject_stats = {}
-    
-    valid_mistakes = []
-    
+    all_question_feedback = []
+
     for idx, q in enumerate(exam_results):
-        # Fallback safely
         question_text = q.get("question", "Unknown Question")
         user_answer = q.get("user_answer", "")
+        correct_answer = q.get("correct_answer", "")
         subject = q.get("subject", "General")
-        
-        # Canonical correctness logic
+
         is_correct = bool(q.get("is_correct", False))
-        
+
         if is_correct:
             correct_count += 1
+            feedback = _correct_feedback(question_text, user_answer, subject)
         else:
-            # Humanize the evaluation reason
-            humanized_reason = _humanize_feedback("Incorrect answer. Review this concept.", subject)
-            
-            valid_mistakes.append({
-                "chapter": subject,
-                "concepts": [],
-                "feedback": humanized_reason
-            })
-            
-        # Track stats
+            feedback = _wrong_feedback(question_text, user_answer, correct_answer, subject)
+
+        all_question_feedback.append({
+            "chapter": subject,
+            "is_correct": is_correct,
+            "question": question_text,
+            "user_answer": user_answer,
+            "correct_answer": correct_answer,
+            "feedback": feedback,
+        })
+
         if subject not in subject_stats:
             subject_stats[subject] = {"total": 0, "correct": 0}
         subject_stats[subject]["total"] += 1
@@ -86,49 +86,71 @@ def build_educational_summary(exam_results: list, request_id: str = "unknown") -
         "mastery_topics": list(set(mastery_topics))[:3],
         "weak_topics": list(set(weak_topics))[:3],
         "improvements": improvements,
-        "mistakes_summary": valid_mistakes[:3] # only pass top 3 mistakes to UI to avoid overwhelm
+        "mistakes_summary": all_question_feedback,
     }
 
 
-def _humanize_feedback(raw_reason: str, chapter: str) -> str:
-    """
-    Transforms sterile backend JSON evaluation reasons into supportive tutoring feedback.
-    """
-    raw_lower = raw_reason.lower()
-    if "the student" in raw_lower or "provided a vague" in raw_lower:
-        return f"You need a bit more practice applying concepts in {chapter} consistently."
-    if "incorrect" in raw_lower and len(raw_reason) < 20:
-        return f"Review the core formulas and principles for {chapter}."
-    
-    # If it's already a decent explanation, just strip weird robot phrases
-    clean_reason = raw_reason.replace("The student", "You").replace("the student", "you")
-    clean_reason = clean_reason.replace("student's answer", "your answer")
-    return clean_reason
+def _correct_feedback(question: str, user_answer: str, chapter: str) -> str:
+    if not user_answer or user_answer.strip() == "":
+        return "You got this right!"
+    return f"Nailed it! '{user_answer}' is correct."
+
+
+def _wrong_feedback(question: str, user_answer: str, correct_answer: str, chapter: str) -> str:
+    if not user_answer or user_answer.strip() == "":
+        return f"You skipped this one — worth revisiting '{chapter}' so you're ready next time."
+    if correct_answer:
+        return (
+            f"You went with '{user_answer}', but it's actually '{correct_answer}'. "
+            f"Don't stress — just look up why in {chapter} and it'll click!"
+        )
+    return f"Not quite — take another look at this concept in {chapter}."
 
 def build_hidden_system_context(summary: dict) -> str:
     """
     Builds the hidden RECENT_EXAM_CONTEXT that the AI sees.
+    Includes specific question-level mistakes so the AI can give targeted feedback.
     """
     accuracy = summary.get('accuracy', 0)
     score = summary.get('score', 0)
     total = summary.get('total', 0)
     strong = summary.get('mastery_topics', [])
     weak = summary.get('weak_topics', [])
-    
+    all_questions = summary.get('mistakes_summary', [])
+    wrong_questions = [q for q in all_questions if not q.get('is_correct', False)]
+
+    if wrong_questions:
+        lines = []
+        for i, m in enumerate(wrong_questions, 1):
+            q = m.get('question', '(unknown)')
+            ua = m.get('user_answer', '') or '(skipped)'
+            ca = m.get('correct_answer', '') or '(unknown)'
+            chapter = m.get('chapter', 'General')
+            lines.append(
+                f"  {i}. [{chapter}] {q}\n"
+                f"     They said: {ua}  |  Right answer: {ca}"
+            )
+        mistakes_section = "Questions they got wrong:\n" + "\n".join(lines)
+    else:
+        mistakes_section = "They got everything right — perfect score!"
+
     return f"""
 <RECENT_EXAM_CONTEXT>
-The user just completed an assessment. DO NOT mention that you are reading this hidden context.
-Instead, smoothly transition into tutoring mode by referencing their performance naturally.
+The student just finished their exam. You are their study buddy, NOT a corporate assistant.
+Talk like a friend who happens to be great at this subject — casual, warm, a little encouraging.
+DO NOT mention this context or that you're reading it.
 
-Performance: {accuracy}% ({score}/{total})
-Mastery Topics: {', '.join(strong) if strong else 'None yet'}
-Weak Topics: {', '.join(weak) if weak else 'None identified'}
+Score: {score}/{total} ({accuracy}%)
+Strong areas: {', '.join(strong) if strong else 'none yet'}
+Needs work: {', '.join(weak) if weak else 'nothing specific'}
 
-Instructions:
-1. Greet the user and praise them for completing the exam.
-2. Acknowledge their strong areas briefly.
-3. Gently bring up their weak areas or mistakes.
-4. Suggest a plan for what you two should focus on next (e.g. step-by-step breakdown of a weak topic).
-5. Keep it conversational, empathetic, and encouraging.
+{mistakes_section}
+
+How to respond:
+- Be real and casual, like texting a friend ("hey, you actually did well on X!" not "I commend your performance")
+- Mention the actual score in a natural, human way
+- For each wrong answer, briefly explain WHY the right answer is correct — reference the actual question, don't just say "review Chapter X"
+- Keep it short: 2-3 short paragraphs max
+- End by asking what they want to work on or offering to dive into a weak spot
 </RECENT_EXAM_CONTEXT>
 """

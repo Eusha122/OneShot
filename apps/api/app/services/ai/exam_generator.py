@@ -136,48 +136,57 @@ class ExamGenerator:
         max_retries = 3
         for attempt in range(max_retries):
             try:
+                # Use a long timeout — small local models are slow for structured JSON generation
                 response_text = await self.client.generate(
                     prompt=user_prompt,
                     history=[],
                     system_prompt=system_prompt,
                     temperature=0.3,
-                    response_format="json"
+                    response_format="json",
+                    timeout=240,
                 )
 
                 logger.info(f"[ExamGenerator] Raw LLM response length: {len(response_text)}")
 
-                # Clean up potential markdown formatting around JSON
+                # Strip markdown fences the model sometimes wraps around JSON
                 clean_text = response_text.strip()
-                if clean_text.startswith("```json"):
-                    clean_text = clean_text[7:]
-                if clean_text.startswith("```"):
-                    clean_text = clean_text[3:]
+                for fence in ("```json", "```"):
+                    if clean_text.startswith(fence):
+                        clean_text = clean_text[len(fence):]
                 if clean_text.endswith("```"):
                     clean_text = clean_text[:-3]
-
                 clean_text = clean_text.strip()
 
                 questions = json.loads(clean_text)
 
-                # Extract list if it's wrapped in a dict
+                # Unwrap from any container the model decided to use
                 if isinstance(questions, dict):
-                    for key, val in questions.items():
+                    # Case 1: {"questions": [...]}  or any key whose value is a list
+                    extracted = None
+                    for val in questions.values():
                         if isinstance(val, list):
-                            questions = val
+                            extracted = val
                             break
+                    if extracted is None:
+                        # Case 2: {"0": {...}, "1": {...}} — dict of question objects
+                        extracted = list(questions.values())
+                    questions = extracted
 
                 # Strict Validation
                 if not isinstance(questions, list):
                     logger.error(f"[ExamGenerator] Raw parsed structure: {type(questions)}")
                     raise ValidationError("Root element is not a list and does not contain a list")
-                if not questions or len(questions) == 0:
+
+                # Filter out any non-dict items (null, string, number) instead of hard-failing
+                original_len = len(questions)
+                questions = [q for q in questions if isinstance(q, dict)]
+                if len(questions) < original_len:
+                    logger.warning(f"[ExamGenerator] Dropped {original_len - len(questions)} non-dict items from LLM output")
+
+                if not questions:
                     raise ValidationError("No valid questions generated")
 
                 for i, q in enumerate(questions):
-                    if q is None:
-                        raise ValidationError("Null question object detected")
-                    if not isinstance(q, dict):
-                        raise ValidationError("Question item is not a dictionary")
                     required_keys = {"question", "answer"}
                     if not required_keys.issubset(q.keys()):
                         raise ValidationError(f"Missing required keys in question: {q}")

@@ -79,9 +79,34 @@ async def stream_exam_transition(
                         yield f"data: {payload}\n\n"
                 except Exception:
                     pass
-            
+
+            # Persist both messages once streaming is complete
+            if request.conversation_id and full_content:
+                repo = MessageRepository(session)
+                try:
+                    await repo.create(MessageCreate(
+                        conversation_id=request.conversation_id,
+                        role="user",
+                        content="I just finished the assessment. Can you give me some feedback and help me improve?",
+                        mode=request.learning_mode
+                    ))
+                    await repo.create(MessageCreate(
+                        conversation_id=request.conversation_id,
+                        role="assistant",
+                        content=full_content,
+                        visual_blocks=visual_blocks,
+                        mode=request.learning_mode
+                    ))
+                    await session.commit()
+                except Exception:
+                    await session.rollback()
+                    logger.exception(
+                        "Failed to persist exam transition messages for conversation_id=%s",
+                        request.conversation_id,
+                    )
+
             yield f"data: {json.dumps({'type': 'done'})}\n\n"
-            
+
         except Exception as e:
             logger.error(f"Error in stream_exam_transition generation: {e}")
             yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"

@@ -86,3 +86,4 @@ class ExamTransitionRequest(BaseModel):
     history: list[ChatMessage] = Field(default_factory=list)
     learning_mode: LearningMode = "visual_mode"
     request_id: str | None = None
+    conversation_id: int | None = None

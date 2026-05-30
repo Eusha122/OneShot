@@ -585,10 +585,12 @@ export function App() {
                   setIsGenerating(true);
                   setActivePipelineStages([]);
                   setDraft("");
-                  
+
+                  let examConversationId: number | undefined;
                   if (learnerId) {
                     try {
                       const newConv = await createConversation(learnerId, "Exam Results: " + subject);
+                      examConversationId = newConv.id;
                       skipFetchRef.current = true;
                       setActiveConversationId(newConv.id);
                       setConversationsList(prev => [newConv, ...prev]);
@@ -599,7 +601,7 @@ export function App() {
 
                   // Empty history because it's a new conversation
                   const history: any[] = [];
-                  
+
                   // Set messages to ONLY the placeholder assistant message (new tab)
                   setMessages([
                     {
@@ -616,6 +618,7 @@ export function App() {
                       learningMode: selectedMode,
                       examResults: clonedPayload.questions,
                       requestId: request_id,
+                      conversationId: examConversationId,
                       onEvent: (event) => {
                         if (event.type === "meta") {
                           const validBlocks = Array.isArray(event.visual_blocks) ? event.visual_blocks.filter(Boolean) : [];
