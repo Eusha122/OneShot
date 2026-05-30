@@ -40,7 +40,10 @@ const modes: { id: LearningMode; label: string }[] = [
 
 export function App() {
   const [activeView, setActiveView] = useState<"chat" | "whiteboard" | "exams" | "dashboard">("chat");
-  const [sidebarOpen, setSidebarOpen] = useState(true);
+  // Default open on desktop, closed on mobile (< 1024px)
+  const [sidebarOpen, setSidebarOpen] = useState(() =>
+    typeof window !== "undefined" ? window.innerWidth >= 1024 : true
+  );
   const [selectedMode, setSelectedMode] = useState<LearningMode>("visual_mode");
   const selectedSubject = useChatStore((s) => s.selectedSubject) as SubjectType;
   const setSelectedSubject = useChatStore((s) => s.setSubject);
@@ -149,13 +152,6 @@ export function App() {
     }
   }, [activeConversationId]);
 
-  function resizeTextarea() {
-    const textarea = textareaRef.current;
-    if (!textarea) return;
-    textarea.style.height = "0px";
-    textarea.style.height = `${Math.min(textarea.scrollHeight, 180)}px`;
-  }
-
   async function handleFileUpload(file: File) {
     if (!file.name.toLowerCase().endsWith(".pdf")) {
       alert("Only PDF files are supported");
@@ -203,10 +199,6 @@ export function App() {
     } catch (err) {
       setActiveDocuments(prev => prev.map(d => d.id === tempId ? { ...d, status: "failed" } : d));
     }
-  }
-
-  function removeDocument(id: number) {
-    setActiveDocuments(prev => prev.filter(d => d.id !== id));
   }
 
   async function handleImageUpload(file: File) {
@@ -361,6 +353,9 @@ export function App() {
         activeDocumentIds
     });
 
+    // Hold visual blocks until streaming is done so text appears first
+    let pendingChatBlocks: any[] = [];
+
     try {
       await streamChatMessage({
         history,
@@ -371,12 +366,10 @@ export function App() {
         subject: selectedSubject,
         onEvent: (event) => {
           if (event.type === "meta") {
-            const validBlocks = Array.isArray(event.visual_blocks) ? event.visual_blocks.filter(Boolean) : [];
-            setMessages((current) =>
-              current.map((message) =>
-                message.id === assistantMessageId ? { ...message, visualBlocks: validBlocks } : message,
-              ),
-            );
+            // Capture blocks — don't render yet
+            pendingChatBlocks = Array.isArray(event.visual_blocks)
+              ? event.visual_blocks.filter(Boolean)
+              : [];
             return;
           }
 
@@ -398,12 +391,26 @@ export function App() {
             });
             return;
           }
-          
+
           if (event.type === "context") {
             setActivePipelineStages(prev => {
               if (prev.includes(event.message)) return prev;
               return [event.message, ...prev];
             });
+            return;
+          }
+
+          if (event.type === "done") {
+            // Text is complete — now reveal the animation
+            if (pendingChatBlocks.length > 0) {
+              setMessages((current) =>
+                current.map((message) =>
+                  message.id === assistantMessageId
+                    ? { ...message, visualBlocks: pendingChatBlocks }
+                    : message,
+                ),
+              );
+            }
             return;
           }
 
@@ -433,12 +440,19 @@ export function App() {
     }
   }
 
-  const sidebarOffsetClass = sidebarOpen ? "lg:left-[280px]" : "lg:left-14";
-
   return (
-    <main className="h-screen overflow-hidden bg-[#0a0a0a] text-[#f5f5f5]">
+    <main className="h-dvh overflow-hidden bg-[#0a0a0a] text-[#f5f5f5]">
       {learnerId === null && <OnboardingModal onComplete={setLearnerId} />}
-      <div className="flex h-screen">
+      <div className="flex h-dvh">
+        {/* Mobile sidebar backdrop — tap to close */}
+        {sidebarOpen && (
+          <div
+            className="fixed inset-0 z-30 bg-black/60 backdrop-blur-sm lg:hidden"
+            aria-hidden="true"
+            onClick={() => setSidebarOpen(false)}
+          />
+        )}
+
         <AnimatePresence initial={false}>
           {sidebarOpen && (
             <motion.aside
@@ -446,7 +460,7 @@ export function App() {
               animate={{ x: 0, opacity: 1 }}
               exit={{ x: -280, opacity: 0 }}
               transition={{ type: "spring", damping: 28, stiffness: 240 }}
-              className="fixed inset-y-0 left-0 z-40 w-[280px] border-r border-[#1f1f1f] bg-[#111111] lg:static"
+              className="fixed inset-y-0 left-0 z-40 w-[280px] border-r border-[#1f1f1f] bg-[#111111] lg:static lg:z-auto"
             >
               <Sidebar 
                 onToggle={() => setSidebarOpen(false)}
@@ -467,11 +481,11 @@ export function App() {
               type="button"
               aria-label="Expand sidebar"
               onClick={() => setSidebarOpen(true)}
-              className="grid h-9 w-9 place-items-center rounded-md text-[#9ca3af] transition hover:bg-[#1a1a1a] hover:text-[#f5f5f5]"
+              className="grid h-11 w-11 place-items-center rounded-md text-[#9ca3af] transition hover:bg-[#1a1a1a] hover:text-[#f5f5f5]"
             >
               <ChevronRight size={17} />
             </button>
-            <div className="grid h-8 w-8 place-items-center rounded-md bg-[#1a1a1a] text-xs font-semibold text-[#f5f5f5]">
+            <div className="grid h-10 w-10 place-items-center rounded-md bg-[#1a1a1a] text-xs font-semibold text-[#f5f5f5]">
               O
             </div>
           </aside>
@@ -479,12 +493,22 @@ export function App() {
 
         <section ref={mainScrollRef} className="flex min-w-0 flex-1 flex-col overflow-y-auto relative">
           <header className="sticky top-0 z-20 h-14 shrink-0 border-b border-[#1f1f1f] bg-[#0a0a0a]/90 backdrop-blur-md px-3">
-            <div className="flex h-full items-center justify-between">
-              <p className="text-sm font-medium text-[#f5f5f5]">OneShot</p>
+            <div className="flex h-full items-center justify-between gap-2">
+              {/* Hamburger — visible only on mobile (< lg) */}
+              <button
+                type="button"
+                aria-label="Toggle sidebar"
+                onClick={() => setSidebarOpen((v) => !v)}
+                className="grid h-10 w-10 shrink-0 place-items-center rounded-md text-[#9ca3af] transition hover:bg-[#1a1a1a] hover:text-[#f5f5f5] lg:hidden"
+              >
+                <Menu size={18} />
+              </button>
+              <p className="flex-1 text-sm font-medium text-[#f5f5f5] lg:flex-none">OneShot</p>
               <button
                 onClick={() => setIsProfileOpen(true)}
-                className="grid h-8 w-8 place-items-center rounded-md text-[#9ca3af] transition hover:bg-[#1a1a1a] hover:text-amber-400"
+                className="grid h-10 w-10 shrink-0 place-items-center rounded-md text-[#9ca3af] transition hover:bg-[#1a1a1a] hover:text-amber-400"
                 title="Student Profile Settings"
+                aria-label="Student Profile Settings"
               >
                 <Settings size={16} />
               </button>
@@ -499,7 +523,7 @@ export function App() {
 
           {activeView === "dashboard" ? (
             <div className="flex-1 overflow-y-auto">
-              <AnalyticsDashboard onStartRevision={(topic) => {
+              <AnalyticsDashboard onStartRevision={(_topic) => {
                 setActiveView("exams");
                 // In a real app we'd pass the topic down, but switching the view is enough for the demo
               }} />
@@ -612,6 +636,8 @@ export function App() {
                   ]);
 
                   // 2. Stream transition
+                  let pendingExamBlocks: any[] = [];
+
                   try {
                     await streamExamTransition({
                       history,
@@ -621,12 +647,10 @@ export function App() {
                       conversationId: examConversationId,
                       onEvent: (event) => {
                         if (event.type === "meta") {
-                          const validBlocks = Array.isArray(event.visual_blocks) ? event.visual_blocks.filter(Boolean) : [];
-                          setMessages((current) =>
-                            current.map((message) =>
-                              message.id === assistantMessageId ? { ...message, visualBlocks: validBlocks } : message,
-                            ),
-                          );
+                          // Capture blocks — wait for text to finish before showing
+                          pendingExamBlocks = Array.isArray(event.visual_blocks)
+                            ? event.visual_blocks.filter(Boolean)
+                            : [];
                           return;
                         }
 
@@ -641,8 +665,23 @@ export function App() {
                           return;
                         }
 
-                        if (event.type === "done" || event.type === "error") {
-                           setIsGenerating(false);
+                        if (event.type === "done") {
+                          // Text done — now show the exam summary card
+                          if (pendingExamBlocks.length > 0) {
+                            setMessages((current) =>
+                              current.map((message) =>
+                                message.id === assistantMessageId
+                                  ? { ...message, visualBlocks: pendingExamBlocks }
+                                  : message,
+                              ),
+                            );
+                          }
+                          setIsGenerating(false);
+                          return;
+                        }
+
+                        if (event.type === "error") {
+                          setIsGenerating(false);
                         }
                       }
                     });
@@ -763,7 +802,7 @@ function OnboardingModal({ onComplete }: { onComplete: (id: number) => void }) {
             />
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 gap-4 xs:grid-cols-2">
             <div>
               <label htmlFor="grade" className="mb-1 block text-xs text-[#9ca3af]">Grade/Class</label>
               <select
@@ -1021,36 +1060,62 @@ function ConversationWorkspace({ isGenerating, messages, draft, onSelectPrompt }
 
 function EmptyState({ onSelectPrompt }: { onSelectPrompt: (prompt: string) => void }) {
   const prompts = [
-    { title: "Explain a math problem", icon: <Sigma size={18} /> },
-    { title: "Summarize a PDF", icon: <Paperclip size={18} /> },
-    { title: "Help me study physics", icon: <Atom size={18} /> },
-    { title: "Generate quiz questions", icon: <PenTool size={18} /> },
+    {
+      label: "Optics",
+      title: "Animate a light ray hitting a mirror at 35° — show the normal, angle of incidence, and reflection.",
+      icon: <Atom size={16} />,
+      accent: "from-blue-500/10 to-blue-600/5 border-blue-500/20 hover:border-blue-400/40",
+      tag: "text-blue-400",
+    },
+    {
+      label: "Waves",
+      title: "Plot y = sin(x) and show how changing amplitude and frequency reshapes the wave.",
+      icon: <Sigma size={16} />,
+      accent: "from-violet-500/10 to-violet-600/5 border-violet-500/20 hover:border-violet-400/40",
+      tag: "text-violet-400",
+    },
+    {
+      label: "Forces",
+      title: "Show F = ma with a block on a surface — animate how force and friction change acceleration.",
+      icon: <Atom size={16} />,
+      accent: "from-amber-500/10 to-amber-600/5 border-amber-500/20 hover:border-amber-400/40",
+      tag: "text-amber-400",
+    },
+    {
+      label: "Projectile",
+      title: "Launch a projectile at 45° and trace its parabolic path in real time.",
+      icon: <PenTool size={16} />,
+      accent: "from-emerald-500/10 to-emerald-600/5 border-emerald-500/20 hover:border-emerald-400/40",
+      tag: "text-emerald-400",
+    },
   ];
 
   return (
-    <motion.div 
-      initial={{ opacity: 0, y: 20 }} 
-      animate={{ opacity: 1, y: 0 }} 
+    <motion.div
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, filter: "blur(8px)", scale: 0.96 }}
       transition={{ duration: 0.25, ease: "easeInOut" }}
       className="flex flex-1 flex-col items-center justify-center px-4"
     >
-      <div className="mb-8 text-center">
-        <h2 className="mb-3 text-3xl font-semibold tracking-tight text-[#f5f5f5]">What's on the agenda today?</h2>
-        <p className="text-sm text-[#9ca3af]">Ask anything, or try an example below.</p>
+      <div className="mb-10 text-center">
+        <h2 className="mb-2 text-3xl font-semibold tracking-tight text-[#f5f5f5]">What's on the agenda today?</h2>
+        <p className="text-sm text-[#6b7280]">Ask anything, or launch a simulation below.</p>
       </div>
 
-      <div className="grid w-full max-w-2xl grid-cols-1 gap-3 sm:grid-cols-2">
+      <div className="grid w-full max-w-2xl grid-cols-1 gap-2.5 sm:grid-cols-2">
         {prompts.map((prompt, i) => (
           <button
             key={i}
             onClick={() => onSelectPrompt(prompt.title)}
-            className="group flex items-center gap-4 rounded-2xl border border-white/5 bg-white/5 p-4 text-left transition-all hover:bg-white/10 hover:shadow-[0_0_20px_rgba(255,255,255,0.03)] active:scale-[0.98]"
+            className={`group flex flex-col gap-2 rounded-xl border bg-gradient-to-br p-4 text-left transition-all active:scale-[0.98] ${prompt.accent}`}
           >
-            <div className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-black/40 text-[#f5f5f5] transition-colors group-hover:bg-black/60 group-hover:text-white">
-              {prompt.icon}
-            </div>
-            <span className="text-sm font-medium text-[#e5e5e5] group-hover:text-white">{prompt.title}</span>
+            <span className={`text-[10px] font-semibold uppercase tracking-widest ${prompt.tag}`}>
+              {prompt.label}
+            </span>
+            <span className="text-sm leading-snug text-[#d1d5db] group-hover:text-white transition-colors">
+              {prompt.title}
+            </span>
           </button>
         ))}
       </div>
@@ -1069,7 +1134,7 @@ function ChatBubble({ isStreaming, message }: { isStreaming: boolean; message: M
       className={`flex ${isUser ? "justify-end" : "justify-start"}`}
     >
       <div
-        className={`max-w-[760px] w-full text-sm leading-6 text-[#f5f5f5] ${
+        className={`w-full max-w-full text-sm leading-6 text-[#f5f5f5] sm:max-w-[760px] ${
           isUser ? "rounded-2xl bg-[#1a1a1a] px-4 py-3" : ""
         }`}
       >
@@ -1177,9 +1242,6 @@ function Composer({
   const imageInputRef = useRef<HTMLInputElement | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [showAttachmentMenu, setShowAttachmentMenu] = useState(false);
-  const latestExamContext = useChatStore((s) => s.latestExamContext);
-  const clearExamContext = useChatStore((s) => s.clearExamContext);
-
   const handleAttachClick = () => {
     fileInputRef.current?.click();
   };
@@ -1235,15 +1297,16 @@ function Composer({
   };
 
   return (
-    <footer className="sticky bottom-0 z-30 shrink-0 bg-gradient-to-t from-[#0a0a0a] via-[#0a0a0a]/95 to-[#0a0a0a]/80 backdrop-blur-md px-4 pb-6 pt-4 sm:px-6">
+    <footer className="composer-footer sticky bottom-0 z-30 shrink-0 bg-gradient-to-t from-[#0a0a0a] via-[#0a0a0a]/95 to-[#0a0a0a]/80 backdrop-blur-md px-3 pt-3 sm:px-6 sm:pt-4">
       <div className="mx-auto max-w-3xl">
-        <div className="mb-3 flex gap-1.5 overflow-x-auto pb-1">
+        {/* Mode bar */}
+        <div className="pretty-scroll mb-3 flex gap-1 overflow-x-auto pb-0">
           {modes.map((mode) => (
             <button
               key={mode.id}
               type="button"
               onClick={() => onModeChange(mode.id)}
-              className={`shrink-0 rounded-full px-4 py-1.5 text-[13px] font-medium transition-all ${
+              className={`shrink-0 rounded-full px-3 py-2 text-xs font-medium transition-all sm:px-4 sm:text-[13px] ${
                 selectedMode === mode.id
                   ? "bg-white/10 text-white shadow-sm"
                   : "text-[#9ca3af] hover:bg-white/5 hover:text-[#f5f5f5]"
@@ -1298,25 +1361,9 @@ function Composer({
           onDragLeave={handleDragLeave}
           onDrop={handleDrop}
         >
-          {/* Active Context Indicator */}
-          {latestExamContext && (
-            <div className="absolute -top-10 left-4 animate-pulse flex items-center gap-2 rounded-full border border-cyan-500/30 bg-cyan-900/30 px-3 py-1 text-xs font-medium text-cyan-400 shadow-[0_0_15px_rgba(6,182,212,0.2)] backdrop-blur-md">
-              <span className="text-sm">🧪</span>
-              <span className="capitalize">{latestExamContext.subject} Context Active</span>
-              <button 
-                onClick={(e) => {
-                  e.preventDefault();
-                  clearExamContext();
-                }}
-                className="ml-1 rounded-full p-0.5 hover:bg-cyan-500/20 text-cyan-300 transition-colors"
-                title="Clear Context"
-              >
-                <X size={12} />
-              </button>
-            </div>
-          )}
+          {/* Context indicator removed — no longer shown in UI */}
 
-          <div className="flex items-end gap-2">
+          <div className="flex items-end gap-1.5">
             <input
               ref={fileInputRef}
               type="file"
@@ -1339,7 +1386,7 @@ function Composer({
                 type="button"
                 aria-label="Add attachment"
                 onClick={handlePlusClick}
-                className={`mb-1 grid h-10 w-10 shrink-0 place-items-center rounded-full transition-all active:scale-95 text-[#9ca3af] ${showAttachmentMenu ? 'bg-white/10 text-white' : 'bg-white/0 hover:bg-white/10 hover:text-white'}`}
+                className={`grid h-9 w-9 shrink-0 place-items-center rounded-full transition-all active:scale-95 text-[#9ca3af] ${showAttachmentMenu ? 'bg-white/10 text-white' : 'bg-white/0 hover:bg-white/10 hover:text-white'}`}
               >
                 <Plus size={18} />
               </button>
@@ -1350,6 +1397,8 @@ function Composer({
                     onClose={() => setShowAttachmentMenu(false)}
                     onUploadPdf={handleAttachClick}
                     onUploadImage={handleCameraClick}
+                    selectedSubject={selectedSubject}
+                    onSubjectChange={onSubjectChange}
                   />
                 )}
               </AnimatePresence>
@@ -1367,30 +1416,13 @@ function Composer({
                 }
               }}
               placeholder={activeDocuments.length > 0 ? "Ask a question about the documents..." : "Ask about a concept or request a visual explanation"}
-              className="pretty-scroll mb-1 max-h-[200px] min-h-10 flex-1 resize-none bg-transparent px-2 py-2 text-[15px] leading-relaxed text-[#f5f5f5] outline-none placeholder:text-[#6b7280]"
+              className="pretty-scroll max-h-[160px] min-h-[36px] flex-1 resize-none bg-transparent px-2 py-1.5 text-sm leading-relaxed text-[#f5f5f5] outline-none placeholder:text-[#6b7280]"
             />
-
-            {/* Subject Selector Dropdown */}
-            <div className="absolute right-24 bottom-3">
-              <select 
-                value={selectedSubject} 
-                onChange={(e) => onSubjectChange(e.target.value as SubjectType)}
-                className="h-8 rounded-lg bg-[#222] px-2 text-xs font-medium text-[#f5f5f5] outline-none hover:bg-[#2a2a2a] transition border border-[#333] cursor-pointer"
-              >
-                <option value="auto">Auto Detect</option>
-                <option value="physics">Physics</option>
-                <option value="chemistry">Chemistry</option>
-                <option value="biology">Biology</option>
-                <option value="mathematics">Mathematics</option>
-                <option value="ict">ICT</option>
-                <option value="general">General Chat</option>
-              </select>
-            </div>
 
             <button
               type="button"
               aria-label="Voice Input"
-              className="mb-1 grid h-10 w-10 shrink-0 place-items-center rounded-full bg-white/0 text-[#9ca3af] transition-all hover:bg-white/10 hover:text-white active:scale-95"
+              className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-white/0 text-[#9ca3af] transition-all hover:bg-white/10 hover:text-white active:scale-95"
             >
               <Mic size={18} />
             </button>
@@ -1399,7 +1431,7 @@ function Composer({
               type="button"
               aria-label="Send message"
               onClick={() => onSubmit()}
-              className="mb-1 grid h-10 w-10 shrink-0 place-items-center rounded-full bg-white text-black transition-all hover:scale-105 hover:bg-[#f0f0f0] active:scale-95 disabled:pointer-events-none disabled:bg-white/10 disabled:text-white/30"
+              className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-white text-black transition-all hover:scale-105 hover:bg-[#f0f0f0] active:scale-95 disabled:pointer-events-none disabled:bg-white/10 disabled:text-white/30"
               disabled={!draft.trim() || isGenerating || activeDocuments.some(d => d.status === "uploading" || d.status === "processing")}
             >
               <ArrowUp size={18} strokeWidth={2.5} />

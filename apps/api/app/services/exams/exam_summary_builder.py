@@ -86,7 +86,7 @@ def build_educational_summary(exam_results: list, request_id: str = "unknown") -
         "mastery_topics": list(set(mastery_topics))[:3],
         "weak_topics": list(set(weak_topics))[:3],
         "improvements": improvements,
-        "mistakes_summary": all_question_feedback,
+        "question_feedback": all_question_feedback,
     }
 
 
@@ -116,7 +116,7 @@ def build_hidden_system_context(summary: dict) -> str:
     total = summary.get('total', 0)
     strong = summary.get('mastery_topics', [])
     weak = summary.get('weak_topics', [])
-    all_questions = summary.get('mistakes_summary', [])
+    all_questions = summary.get('question_feedback', [])
     wrong_questions = [q for q in all_questions if not q.get('is_correct', False)]
 
     if wrong_questions:

@@ -1,6 +1,6 @@
 import json
 import logging
-import httpx
+import re
 import uuid
 from typing import Optional
 from app.services.ai.ai_router import ai_router, InfrastructureError, InferenceError
@@ -8,6 +8,82 @@ from app.services.ai.ollama_client import ValidationError
 from app.data.curriculum import get_topic_list_string, get_subject_rules
 
 logger = logging.getLogger(__name__)
+
+
+def _normalise_question(q: dict) -> None:
+    """
+    In-place normalisation of a question dict so it always matches our canonical schema:
+      - q["answer"] is always the FULL option text (never a letter like "C" or an index like 2)
+      - q["options"] is always a flat list of strings
+    Handles the various formats cloud models return.
+    """
+    # ── Step 1: flatten option objects → strings, noting which was flagged correct ──
+    inferred_answer: str | None = None
+    if "options" in q and isinstance(q["options"], list):
+        raw_opts = q["options"]
+        flat: list[str] = []
+        for opt in raw_opts:
+            if isinstance(opt, dict):
+                text = str(opt.get("text") or opt.get("value") or opt.get("option") or "")
+                flat.append(text)
+                if inferred_answer is None:
+                    if opt.get("isCorrect") or opt.get("is_correct") or opt.get("correct"):
+                        inferred_answer = text
+            else:
+                flat.append(str(opt))
+        q["options"] = flat
+
+    options: list[str] = q.get("options", [])
+
+    # ── Step 2: resolve the answer field ─────────────────────────────────────────
+    # Collect whatever the model called the answer field
+    raw_answer: str | None = None
+    for key in ("answer", "correct_answer", "correctAnswer", "correct", "Answer"):
+        if key in q and q[key] is not None:
+            raw_answer = str(q.pop(key) if key != "answer" else q[key])
+            if key != "answer":
+                pass  # we'll set q["answer"] below
+            break
+
+    if raw_answer is None and inferred_answer:
+        raw_answer = inferred_answer
+
+    # ── Step 3: if raw_answer is a letter (A/B/C/D) or a 1-based index, resolve
+    #           to the actual option text so evaluation works correctly ──────────
+    resolved: str | None = None
+    if raw_answer is not None and options:
+        letter_map = {chr(65 + i): opt for i, opt in enumerate(options)}  # A→opt[0] …
+        raw_stripped = raw_answer.strip()
+
+        # Case: single letter "C" or "c"
+        if re.fullmatch(r'[A-Da-d]', raw_stripped):
+            resolved = letter_map.get(raw_stripped.upper())
+
+        # Case: "A)" / "A." / "A) some text"
+        elif re.match(r'^[A-Da-d][).\s]', raw_stripped):
+            resolved = letter_map.get(raw_stripped[0].upper())
+
+        # Case: integer index "2" (1-based) or "0" (0-based)
+        elif re.fullmatch(r'\d', raw_stripped):
+            idx = int(raw_stripped)
+            # try 1-based first (more common in model output), fall back to 0-based
+            if 1 <= idx <= len(options):
+                resolved = options[idx - 1]
+            elif 0 <= idx < len(options):
+                resolved = options[idx]
+
+        # Case: full text that exactly matches one option — keep as-is
+        elif any(raw_stripped.lower() == opt.strip().lower() for opt in options):
+            resolved = next(opt for opt in options if opt.strip().lower() == raw_stripped.lower())
+
+        # Case: full text that partially matches (cloud sometimes adds extra punctuation)
+        else:
+            for opt in options:
+                if opt.strip().lower() in raw_stripped.lower() or raw_stripped.lower() in opt.strip().lower():
+                    resolved = opt
+                    break
+
+    q["answer"] = resolved if resolved is not None else (raw_answer or "")
 
 
 class ExamGenerator:
@@ -186,6 +262,10 @@ class ExamGenerator:
 
                 if not questions:
                     raise ValidationError("No valid questions generated")
+
+                # Normalise field names — cloud models use different conventions
+                for q in questions:
+                    _normalise_question(q)
 
                 for i, q in enumerate(questions):
                     required_keys = {"question", "answer"}

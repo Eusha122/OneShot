@@ -47,7 +47,7 @@ export const ExamResultSummary: React.FC<VisualBlockWrapperProps> = ({ initialPa
     strong_areas: initialParams.strong_areas ?? initialParams.mastery_topics,
     weak_areas: initialParams.weak_areas ?? initialParams.weak_topics,
     improvements: initialParams.improvements,
-    mistakes_summary: initialParams.mistakes_summary,
+    mistakes_summary: initialParams.question_feedback ?? initialParams.mistakes_summary,
   };
   // Merge with safe defaults so nothing is ever undefined
   const props = { ...SAFE_DEFAULTS, ...rawProps };

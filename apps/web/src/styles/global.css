@@ -8,20 +8,75 @@
   color-scheme: dark;
   background: #0f1117;
   font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+
+  /* ── Legacy spacing vars ─────────────────────────────────────── */
   --section-gap: 96px;
   --content-gap: 32px;
   --paragraph-gap: 18px;
+
+  /* ── Responsive spacing tokens (clamp) ───────────────────────── */
+  --space-xs:  clamp(4px,  0.5vw,  8px);
+  --space-sm:  clamp(8px,  1vw,   12px);
+  --space-md:  clamp(12px, 1.5vw, 20px);
+  --space-lg:  clamp(20px, 2.5vw, 36px);
+  --space-xl:  clamp(32px, 4vw,   64px);
+
+  /* ── Responsive type scale ───────────────────────────────────── */
+  --text-xs: clamp(11px, 0.9vw,  13px);
+  --text-sm: clamp(13px, 1.1vw,  15px);
+  --text-md: clamp(15px, 1.3vw,  17px);
+  --text-lg: clamp(18px, 1.8vw,  24px);
+  --text-xl: clamp(24px, 3vw,    40px);
+  --text-2xl:clamp(32px, 5vw,    64px);
+
+  /* ── Content widths ──────────────────────────────────────────── */
+  --content-max: 1400px;
+  --prose-max:    850px;
+  --chat-max:     760px;
+
+  /* ── Radii ───────────────────────────────────────────────────── */
+  --radius-sm: 8px;
+  --radius-md: 16px;
+  --radius-lg: 24px;
+
+  /* ── Touch target minimum ────────────────────────────────────── */
+  --touch-min: 44px;
 }
 
-* {
+*,
+*::before,
+*::after {
   box-sizing: border-box;
+}
+
+/* Prevent horizontal overflow everywhere */
+html {
+  overflow-x: hidden;
 }
 
 body {
   margin: 0;
   min-width: 320px;
-  min-height: 100vh;
+  min-height: 100dvh; /* dynamic viewport — accounts for mobile URL bar */
   background: #0a0a0a;
+  overflow-x: hidden;
+  /* Ensure text never overflows containers */
+  overflow-wrap: break-word;
+  word-break: break-word;
+}
+
+/* Safe-area padding for iPhone notch / Android gesture nav */
+.safe-bottom {
+  padding-bottom: max(1.5rem, calc(0.75rem + env(safe-area-inset-bottom)));
+}
+.safe-top {
+  padding-top: max(0px, env(safe-area-inset-top));
+}
+
+/* Minimum accessible touch target helper */
+.touch-target {
+  min-height: var(--touch-min);
+  min-width: var(--touch-min);
 }
 
 button,
@@ -215,13 +270,23 @@ button:disabled {
 .math-graph-board {
   background: #ffffff;
   width: 100% !important;
-  height: 320px !important;
+  height: clamp(260px, 45vw, 400px) !important;
 }
 
 @media (min-width: 640px) {
   .math-graph-board {
     height: 380px !important;
   }
+}
+
+/* KaTeX equations must never overflow their container */
+.katex-display {
+  overflow-x: auto;
+  overflow-y: hidden;
+  max-width: 100%;
+}
+.katex {
+  max-width: 100%;
 }
 
 .jxgbox svg {
@@ -292,19 +357,24 @@ button:disabled {
 }
 
 .docs-markdown h1 {
-  font-size: 3rem;
+  font-size: clamp(1.75rem, 4vw, 3rem);
   line-height: 1.1;
 }
 
 .docs-markdown h2 {
-  font-size: 2.25rem;
+  font-size: clamp(1.35rem, 2.5vw, 2.25rem);
   font-weight: 600;
   line-height: 1.2;
 }
 
 .docs-markdown h3 {
-  font-size: 1.5rem;
+  font-size: clamp(1.15rem, 1.8vw, 1.5rem);
   font-weight: 600;
+}
+
+/* Composer footer with safe-area bottom padding */
+.composer-footer {
+  padding-bottom: max(1.5rem, calc(0.75rem + env(safe-area-inset-bottom)));
 }
 
 .docs-markdown p {

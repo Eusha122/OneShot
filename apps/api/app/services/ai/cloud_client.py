@@ -33,12 +33,18 @@ class CloudAIClient:
     Calls an OpenAI-compatible /chat/completions endpoint.
     Raises InfrastructureError / InferenceError so AIRouter can catch them
     with the same logic it uses for OllamaClient.
+
+    allow_system_messages (default False):
+        Set to True for standard OpenAI-compatible endpoints that accept the
+        "system" role.  Keep False for DigitalOcean AI agents, which reject
+        system messages (instructions are baked into the agent configuration).
     """
 
-    def __init__(self):
+    def __init__(self, allow_system_messages: bool = False):
         self._base_url = inference_settings.cloud_ai_url.rstrip("/")
         self._api_key = inference_settings.cloud_ai_key
         self._model = inference_settings.cloud_ai_model or None
+        self._allow_system_messages = allow_system_messages
 
         self._client = httpx.AsyncClient(
             headers={
@@ -60,9 +66,11 @@ class CloudAIClient:
     # ── Internal helpers ──────────────────────────────────────────────────────
 
     def _messages(self, prompt: str, history: list, system_prompt: str | None) -> list[dict]:
-        # DO AI agents reject "system" role messages — the agent's instructions
-        # are configured in the DO dashboard, not passed via the API.
         msgs: list[dict] = []
+        # Prepend system message only when the endpoint supports it.
+        # DO AI agents reject "system" role — their instructions live in the agent config.
+        if self._allow_system_messages and system_prompt:
+            msgs.append({"role": "system", "content": system_prompt})
         for msg in history[-8:]:
             role = msg.role if hasattr(msg, "role") else msg["role"]
             content = msg.content if hasattr(msg, "content") else msg["content"]
@@ -108,14 +116,15 @@ class CloudAIClient:
 
         try:
             data = response.json()
-            content: str = data["choices"][0]["message"]["content"]
-            if not content.strip():
-                raise InferenceError("Empty completion returned by cloud model")
-            return content.strip()
+            content = data["choices"][0]["message"]["content"]
         except (KeyError, IndexError) as e:
             raise InferenceError(
                 f"Unexpected cloud API response shape: {e} — raw: {response.text[:200]}"
             ) from e
+
+        if not isinstance(content, str) or not content.strip():
+            raise InferenceError("Empty or non-string completion returned by cloud model")
+        return content.strip()
 
     # ── Public interface (same signatures as OllamaClient) ────────────────────
 

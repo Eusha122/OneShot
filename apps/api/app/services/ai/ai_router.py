@@ -77,8 +77,8 @@ class AIRouter:
                 return await self._ollama.generate(
                     prompt, history, system_prompt, temperature, response_format, timeout
                 )
-            except InfrastructureError as e:
-                logger.warning("[AIRouter] Ollama failed (%s) — falling back to cloud", e)
+            except (InfrastructureError, InferenceError) as e:
+                logger.warning("[AIRouter] Ollama generate failed (%s) — falling back to cloud", e)
                 return await self._get_cloud().generate(
                     prompt, history, system_prompt, temperature, response_format, timeout
                 )
@@ -129,7 +129,7 @@ class AIRouter:
                 ):
                     yielded = True
                     yield chunk
-            except InfrastructureError as e:
+            except (InfrastructureError, InferenceError) as e:
                 if yielded:
                     # Already sent content to client — can't restart; re-raise so
                     # the route handler can send an error event.

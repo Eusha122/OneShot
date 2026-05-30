@@ -5,6 +5,7 @@ import rehypeKatex from "rehype-katex";
 import rehypeRaw from "rehype-raw";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
+import { MermaidDiagram } from "./MermaidDiagram";
 
 const UNESCAPED_MATH_REGEX =
   /(?<!\\)(\$\$[\s\S]*?(?<!\\)\$\$|(?<!\\)\$[^$\n]*?(?<!\\)\$)/g;
@@ -27,6 +28,11 @@ export function AssistantMarkdown({ content, isStreaming = false }: { content: s
             </a>
           ),
           code: ({ children, className, ...props }) => {
+            // Render mermaid blocks as interactive diagrams
+            if (className === "language-mermaid") {
+              return <MermaidDiagram code={String(children).replace(/\n$/, "")} />;
+            }
+
             const isBlock = className?.includes("language-");
             if (isBlock) {
               return (
@@ -79,9 +85,72 @@ export function AssistantMarkdown({ content, isStreaming = false }: { content: s
   );
 }
 
+// ─── STEP 0: VISUAL JSON BLOCK STRIPPER ──────────────────────────
+// Cloud models can't render our physics simulations so they describe
+// them as JSON schemas inside code blocks instead.  We strip all such
+// blocks so the user never sees raw JSON — the text explanation is enough.
+//
+// Special case: {"type":"iframe","src":"..."} → styled "Open" link.
+// Everything else with a "type" key that looks like a visual descriptor
+// (e.g. "optics-lab", "physics-sim", "diagram", etc.) → removed entirely.
+
+const VISUAL_TYPE_PATTERN =
+  /optics|physics|simulation|diagram|chart|lab|animation|graph|visual|scene|render/i;
+
+function transformVisualJsonBlocks(content: string): string {
+  // Match fenced code blocks (``` or ```json) whose body is a JSON object
+  return content.replace(
+    /```(?:json|javascript|js)?\s*\n?(\{[\s\S]*?\})\s*\n?```/g,
+    (fullMatch, body) => {
+      // Only process if the block looks like JSON
+      let parsed: Record<string, unknown>;
+      try {
+        parsed = JSON.parse(body);
+      } catch {
+        return fullMatch; // not JSON — leave untouched
+      }
+
+      // Must have a "type" field to be treated as a visual descriptor
+      if (typeof parsed.type !== "string") return fullMatch;
+
+      // iframe → convert to a clickable link
+      if (parsed.type === "iframe") {
+        const rawSrc = String(parsed.src || "").trim();
+        const rawCaption = String(parsed.caption || "Open Interactive Simulation");
+        // Only allow http/https URLs — block javascript:, data:, etc.
+        if (!rawSrc || !/^https?:\/\//i.test(rawSrc)) return "";
+        const safeSrc = encodeURI(rawSrc);
+        const safeCaption = rawCaption
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;")
+          .replace(/'/g, "&#39;");
+        return (
+          `\n<a href="${safeSrc}" target="_blank" rel="noopener noreferrer" ` +
+          `style="display:inline-flex;align-items:center;gap:8px;margin-top:8px;` +
+          `padding:8px 16px;border-radius:8px;background:rgba(59,130,246,0.1);` +
+          `border:1px solid rgba(59,130,246,0.25);color:#60a5fa;font-size:13px;` +
+          `font-weight:500;text-decoration:none;">` +
+          `🔬 ${safeCaption} →</a>\n`
+        );
+      }
+
+      // Any other visual/simulation schema — strip silently
+      if (VISUAL_TYPE_PATTERN.test(parsed.type)) return "";
+
+      // Not a visual — leave the code block as-is
+      return fullMatch;
+    }
+  );
+}
+
 // ─── MASTER PIPELINE ──────────────────────────────────────────────
 
 function normalizeMathMarkdown(content: string): string {
+  // Step 0: Strip visual JSON schemas the cloud model outputs instead of real simulations
+  content = transformVisualJsonBlocks(content);
+
   // Step 1: Extract and protect code blocks from ALL processing
   const codeBlocks: string[] = [];
   let text = content.replace(/```[\s\S]*?```/g, (match) => {

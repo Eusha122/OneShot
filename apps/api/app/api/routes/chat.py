@@ -55,17 +55,28 @@ async def stream_exam_transition(
         
         # Build prompt
         system_prompt, _ = build_tutor_prompt(
-            "User just finished an exam.", 
-            request.learning_mode, 
+            "User just finished an exam.",
+            request.learning_mode,
             context="",
             active_document_filenames=[]
         )
-        
-        # Inject our hidden RECENT_EXAM_CONTEXT
-        system_prompt += f"\n\n{system_context}"
-        
-        # The user's actual prompt is implicit (we simulate them saying 'I just finished the exam')
-        user_prompt = "I just finished the assessment. Can you give me some feedback and help me improve?"
+
+        # Inject exam context.
+        # For local Ollama: goes into the system prompt (hidden from UI).
+        # For cloud (DO agents reject system messages): embed it directly in the
+        # user turn so the model still has the full context it needs.
+        from app.core.inference_settings import inference_settings
+        if inference_settings.ai_provider == "production":
+            # Cloud: put context in user message — concise but complete
+            user_prompt = (
+                f"{system_context}\n\n"
+                "Based on the exam results above, give me brief, friendly feedback "
+                "and tell me what to focus on next."
+            )
+        else:
+            # Local: keep context hidden in system prompt
+            system_prompt += f"\n\n{system_context}"
+            user_prompt = "I just finished the assessment. Can you give me some feedback and help me improve?"
         
         full_content = ""
         try:

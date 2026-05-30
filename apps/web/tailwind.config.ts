@@ -5,6 +5,9 @@ export default {
   content: ["./index.html", "./src/**/*.{ts,tsx}"],
   theme: {
     extend: {
+      screens: {
+        xs: "375px", // small phones (iPhone SE, Galaxy A series)
+      },
       colors: {
         canvas: "#0f1117",
         panel: "#161b22",
