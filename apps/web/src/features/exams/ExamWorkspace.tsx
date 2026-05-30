@@ -5,7 +5,7 @@ import { generateExam } from "../../lib/chatApi";
 
 export interface ExamWorkspaceProps {
   learnerId?: number;
-  onFinishExam: (score: number, questions: ExamQuestion[], answers: Record<string, string>, evaluations: Record<string, any>) => void;
+  onFinishExam: (score: number, questions: ExamQuestion[], answers: Record<string, string>, evaluations: Record<string, any>, subject: string) => void;
 }
 
 export function ExamWorkspace({ learnerId, onFinishExam }: ExamWorkspaceProps) {
@@ -61,7 +61,7 @@ export function ExamWorkspace({ learnerId, onFinishExam }: ExamWorkspaceProps) {
   };
 
   const handleFinish = (score: number, userAnswers: Record<string, string>, evaluations: Record<string, any>) => {
-    onFinishExam(score, examData, userAnswers, evaluations);
+    onFinishExam(score, examData, userAnswers, evaluations, lastConfig?.subject?.toLowerCase() || "physics");
   };
 
   return (

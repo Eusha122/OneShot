@@ -36,10 +36,12 @@ export function calculateKinematics(formulaId: string, params: Record<string, nu
     case "motion-4":
       // v^2 = u^2 + 2as
       // If s and a are given, find v. (Assuming positive root for simplicity unless we know direction)
-      const v2 = u * u + 2 * a * s;
-      v = v2 >= 0 ? Math.sqrt(v2) : 0; 
-      t = a !== 0 ? (v - u) / a : 0;
-      if (t < 0) t = 0; // clamp negative time visually
+      {
+        const v2 = u * u + 2 * a * s;
+        v = v2 >= 0 ? Math.sqrt(v2) : 0; 
+        t = a !== 0 ? (v - u) / a : 0;
+        if (t < 0) t = 0; // clamp negative time visually
+      }
       break;
   }
 

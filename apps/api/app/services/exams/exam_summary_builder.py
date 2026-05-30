@@ -1,101 +1,79 @@
 import json
+import logging
 
-def build_educational_summary(exam_results: list) -> dict:
+logger = logging.getLogger(__name__)
+
+def build_educational_summary(exam_results: list, request_id: str = "unknown") -> dict:
     """
     Transforms raw exam results into a clean educational summary object.
     Implements Confidence Scoring and Topic Extraction.
     """
+    logger.info(
+        "[SUMMARY INPUT COUNT] %d",
+        len(exam_results)
+    )
+    
     total_questions = len(exam_results)
+    logger.info(f"[EXAM_SUMMARY][{request_id}] Building summary for {total_questions} questions")
+    
     if total_questions == 0:
-        return {
-            "score": 0,
-            "total": 0,
-            "accuracy": 0,
-            "strong_areas": [],
-            "weak_areas": [],
-            "improvements": ["Keep practicing!"],
-            "mistakes_summary": [],
-        }
+        logger.error(f"[EXAM_SUMMARY][{request_id}] EvaluationPipelineError: total_questions is 0")
+        raise ValueError("EvaluationPipelineError: total_questions cannot be zero.")
 
     correct_count = 0
-    chapters_stats = {}
-    concepts_stats = {}
+    subject_stats = {}
     
     valid_mistakes = []
     
-    for q in exam_results:
-        eval_data = q.get("evaluation") or {}
-        is_correct = eval_data.get("correct", False)
-        partial = eval_data.get("partial_credit", 0.0)
+    for idx, q in enumerate(exam_results):
+        # Fallback safely
+        question_text = q.get("question", "Unknown Question")
+        user_answer = q.get("user_answer", "")
+        subject = q.get("subject", "General")
         
-        chapter = q.get("chapter", "General")
-        concepts = q.get("concepts", [])
-        
-        # Confidence Scoring: Filter out hallucinatory expected answers
-        # If deterministic validator says correct=True but AI hallucinated a wrong expected_answer earlier
-        # We don't penalize the student.
-        confidence = {
-            "numeric_validation": q.get("type") in ["math_numeric", "math_expression"],
-            "llm_generated": True
-        }
+        # Canonical correctness logic
+        is_correct = bool(q.get("is_correct", False))
         
         if is_correct:
             correct_count += 1
         else:
             # Humanize the evaluation reason
-            raw_reason = eval_data.get("reason", "Incorrect answer.")
-            humanized_reason = _humanize_feedback(raw_reason, chapter)
+            humanized_reason = _humanize_feedback("Incorrect answer. Review this concept.", subject)
             
             valid_mistakes.append({
-                "chapter": chapter,
-                "concepts": concepts,
+                "chapter": subject,
+                "concepts": [],
                 "feedback": humanized_reason
             })
             
         # Track stats
-        if chapter not in chapters_stats:
-            chapters_stats[chapter] = {"total": 0, "correct": 0}
-        chapters_stats[chapter]["total"] += 1
+        if subject not in subject_stats:
+            subject_stats[subject] = {"total": 0, "correct": 0}
+        subject_stats[subject]["total"] += 1
         if is_correct:
-            chapters_stats[chapter]["correct"] += 1
-            
-        for c in concepts:
-            if c not in concepts_stats:
-                concepts_stats[c] = {"total": 0, "correct": 0}
-            concepts_stats[c]["total"] += 1
-            if is_correct:
-                concepts_stats[c]["correct"] += 1
+            subject_stats[subject]["correct"] += 1
 
     accuracy = (correct_count / total_questions) * 100 if total_questions > 0 else 0
+    logger.info(f"[EXAM_SUMMARY][{request_id}] Calculated score: {correct_count}/{total_questions} ({accuracy}%)")
     
     # Identify Strong and Weak areas based on chapters and concepts
-    strong_areas = []
-    weak_areas = []
+    mastery_topics = []
+    weak_topics = []
     
-    for c, stats in chapters_stats.items():
+    for s, stats in subject_stats.items():
         if stats["total"] > 0:
             acc = stats["correct"] / stats["total"]
-            if acc >= 0.7:
-                strong_areas.append(c)
-            elif acc <= 0.4:
-                weak_areas.append(c)
-                
-    for c, stats in concepts_stats.items():
-        if stats["total"] > 0:
-            acc = stats["correct"] / stats["total"]
-            if acc >= 0.7:
-                if c not in strong_areas:
-                    strong_areas.append(c)
-            elif acc <= 0.4:
-                if c not in weak_areas:
-                    weak_areas.append(c)
+            if acc >= 0.8:
+                mastery_topics.append(s)
+            elif acc < 0.6:
+                weak_topics.append(s)
 
     # Derive "What Improved"
     improvements = []
     if accuracy >= 80:
         improvements.append("High overall accuracy")
-    if len(strong_areas) > 0:
-        improvements.append(f"Mastery of {strong_areas[0]}")
+    if len(mastery_topics) > 0:
+        improvements.append(f"Mastery of {mastery_topics[0]}")
     if accuracy > 0 and accuracy < 80:
         improvements.append("Solid effort and concept recognition")
     if not improvements:
@@ -105,8 +83,8 @@ def build_educational_summary(exam_results: list) -> dict:
         "score": correct_count,
         "total": total_questions,
         "accuracy": round(accuracy),
-        "strong_areas": list(set(strong_areas))[:3],
-        "weak_areas": list(set(weak_areas))[:3],
+        "mastery_topics": list(set(mastery_topics))[:3],
+        "weak_topics": list(set(weak_topics))[:3],
         "improvements": improvements,
         "mistakes_summary": valid_mistakes[:3] # only pass top 3 mistakes to UI to avoid overwhelm
     }
@@ -134,8 +112,8 @@ def build_hidden_system_context(summary: dict) -> str:
     accuracy = summary.get('accuracy', 0)
     score = summary.get('score', 0)
     total = summary.get('total', 0)
-    strong = summary.get('strong_areas', [])
-    weak = summary.get('weak_areas', [])
+    strong = summary.get('mastery_topics', [])
+    weak = summary.get('weak_topics', [])
     
     return f"""
 <RECENT_EXAM_CONTEXT>
@@ -143,8 +121,8 @@ The user just completed an assessment. DO NOT mention that you are reading this 
 Instead, smoothly transition into tutoring mode by referencing their performance naturally.
 
 Performance: {accuracy}% ({score}/{total})
-Strong Areas: {', '.join(strong) if strong else 'None yet'}
-Weak Areas: {', '.join(weak) if weak else 'None identified'}
+Mastery Topics: {', '.join(strong) if strong else 'None yet'}
+Weak Topics: {', '.join(weak) if weak else 'None identified'}
 
 Instructions:
 1. Greet the user and praise them for completing the exam.

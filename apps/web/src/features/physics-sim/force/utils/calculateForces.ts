@@ -43,16 +43,18 @@ export function calculateForces(formulaId: string, params: Record<string, number
 
     case "impulse":
       // J = Ft = m(v - u) => J = F * t; v = u + J/m
-      const impulse = f * t;
-      const finalVel = u + (m > 0 ? impulse / m : 0);
-      state = {
-        mass: m,
-        force: f,
-        time: t,
-        velocity: finalVel,
-        momentum: impulse, // change in momentum
-        position: u * t // Approximation before impulse happens instantly
-      };
+      {
+        const impulse = f * t;
+        const finalVel = u + (m > 0 ? impulse / m : 0);
+        state = {
+          mass: m,
+          force: f,
+          time: t,
+          velocity: finalVel,
+          momentum: impulse, // change in momentum
+          position: u * t // Approximation before impulse happens instantly
+        };
+      }
       break;
 
     case "conservation":
@@ -73,17 +75,19 @@ export function calculateForces(formulaId: string, params: Record<string, number
     case "gravitational-force":
       // F = G m1 m2 / r^2
       // Use visual G for UI scaling
-      const visualG = 1000;
-      const fg = d > 0 ? (visualG * m1 * m2) / (d * d) : 0;
-      state = {
-        distance: d,
-        force: fg,
-        time: t,
-        particles: [
-          { mass: m1, velocity: 0, position: -d/2 },
-          { mass: m2, velocity: 0, position: d/2 }
-        ]
-      };
+      {
+        const visualG = 1000;
+        const fg = d > 0 ? (visualG * m1 * m2) / (d * d) : 0;
+        state = {
+          distance: d,
+          force: fg,
+          time: t,
+          particles: [
+            { mass: m1, velocity: 0, position: -d/2 },
+            { mass: m2, velocity: 0, position: d/2 }
+          ]
+        };
+      }
       break;
 
     default:

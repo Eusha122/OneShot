@@ -1,4 +1,5 @@
 import ReactMarkdown from "react-markdown";
+import katex from "katex";
 import rehypeHighlight from "rehype-highlight";
 import rehypeKatex from "rehype-katex";
 import rehypeRaw from "rehype-raw";
@@ -88,8 +89,17 @@ function normalizeMathMarkdown(content: string): string {
     return `\n\n__CB${codeBlocks.length - 1}__\n\n`;
   });
 
+  const inlineCode: string[] = [];
+  text = text.replace(/`[^`\n]+`/g, (match) => {
+    inlineCode.push(match);
+    return `__IC${inlineCode.length - 1}__`;
+  });
+
   // Step 2: Convert \[...\] and \(...\) to $$ and $ (with blank lines around display math)
   text = convertLatexDelimiters(text);
+
+  // Step 2.5: Repair "$ x $" spacing before remark-math sees it.
+  text = normalizeMathDelimiterWhitespace(text);
 
   // Step 3: Isolate every $$ delimiter onto its own line with blank lines around
   //         the ENTIRE math block — this is the CORE fix.
@@ -107,12 +117,19 @@ function normalizeMathMarkdown(content: string): string {
   // Step 6.5: Fix common KaTeX syntax errors (e.g. ^\circ and _o' / _o'')
   text = fixKatexSyntaxErrors(text);
 
-  // Step 7: Restore code blocks
+  // Step 7: Validate/repair math so KaTeX does not show red raw source.
+  text = repairInvalidMathSegments(text);
+
+  // Step 8: Restore inline code and code blocks
+  inlineCode.forEach((code, i) => {
+    text = text.replace(`__IC${i}__`, code);
+  });
+
   codeBlocks.forEach((block, i) => {
     text = text.replace(`__CB${i}__`, block);
   });
 
-  // Step 8: Collapse 3+ consecutive blank lines into 2
+  // Step 9: Collapse 3+ consecutive blank lines into 2
   text = text.replace(/\n{3,}/g, "\n\n").trim();
 
   return text;
@@ -182,6 +199,18 @@ function isolateDisplayMath(content: string): string {
   return out.join("\n");
 }
 
+function normalizeMathDelimiterWhitespace(content: string): string {
+  return content.replace(UNESCAPED_MATH_REGEX, (mathSegment) => {
+    if (mathSegment.startsWith("$$")) {
+      const body = mathSegment.slice(2, -2).trim();
+      return `$$\n${body}\n$$`;
+    }
+
+    const body = mathSegment.slice(1, -1).trim();
+    return `$${body}$`;
+  });
+}
+
 // ─── STEP 4: FORCE STRUCTURAL SPACING ───────────────────────────
 // Small models (qwen2.5:3b) often omit the blank line Markdown
 // needs before headings, list items and bold numbered items.
@@ -242,6 +271,17 @@ function fixKatexSyntaxErrors(content: string): string {
   return content.replace(UNESCAPED_MATH_REGEX, (mathSegment) => {
     let fixed = mathSegment;
 
+    fixed = fixed.replace(/\\text\{([A-Z][A-Za-z0-9]*)\}/g, (_, token: string) => {
+      return toChemicalLatex(token);
+    });
+
+    fixed = fixed
+      .replace(/\s*->\s*/g, " \\rightarrow ")
+      .replace(/\s*\u2192\s*/g, " \\rightarrow ");
+
+    fixed = fixed.replace(/_([A-Za-z0-9])/g, "_{$1}");
+    fixed = fixed.replace(/\^([A-Za-z0-9])/g, "^{$1}");
+
     // Fix ^\circ -> ^{\circ}
     fixed = fixed.replace(/\^\\circ/g, "^{\\circ}");
 
@@ -253,4 +293,56 @@ function fixKatexSyntaxErrors(content: string): string {
 
     return fixed;
   });
+}
+
+function toChemicalLatex(token: string): string {
+  return token
+    .split(/(\d+)/)
+    .filter(Boolean)
+    .map((part) => (/^\d+$/.test(part) ? `_{${part}}` : `\\mathrm{${part}}`))
+    .join("");
+}
+
+function repairInvalidMathSegments(content: string): string {
+  return content.replace(UNESCAPED_MATH_REGEX, (mathSegment) => {
+    const isDisplay = mathSegment.startsWith("$$");
+    const delimiter = isDisplay ? "$$" : "$";
+    const body = mathSegment.slice(delimiter.length, -delimiter.length).trim();
+    const repaired = repairMathBody(body);
+
+    if (isValidKatex(repaired, isDisplay)) {
+      return isDisplay ? `$$\n${repaired}\n$$` : `$${repaired}$`;
+    }
+
+    if (isValidKatex(body, isDisplay)) {
+      return isDisplay ? `$$\n${body}\n$$` : `$${body}$`;
+    }
+
+    const textFallback = `\\text{${body.replace(/[{}]/g, "").replace(/\\/g, "")}}`;
+    return isDisplay ? `$$\n${textFallback}\n$$` : `$${textFallback}$`;
+  });
+}
+
+function repairMathBody(body: string): string {
+  return body
+    .replace(/\\dfrac/g, "\\frac")
+    .replace(/\\tfrac/g, "\\frac")
+    .replace(/\\left\s+/g, "\\left")
+    .replace(/\\right\s+/g, "\\right")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function isValidKatex(body: string, displayMode: boolean): boolean {
+  try {
+    katex.renderToString(body, {
+      displayMode,
+      strict: false,
+      throwOnError: true,
+      trust: false,
+    });
+    return true;
+  } catch {
+    return false;
+  }
 }

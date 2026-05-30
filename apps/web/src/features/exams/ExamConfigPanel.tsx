@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
-import { CheckCircle } from "lucide-react";
+import { CheckCircle, AlertTriangle } from "lucide-react";
 import { SSC_CLASS_9_TOPICS } from "./curriculumTopics";
+import { getInferenceStatus } from "../../lib/chatApi";
 
 export interface ExamConfig {
   subject: string;
@@ -27,6 +28,9 @@ export function ExamConfigPanel({ onGenerate, isGenerating }: ExamConfigPanelPro
   const [board, setBoard] = useState("SSC");
   const [className, setClassName] = useState("Class 9");
   const [weakTopics, setWeakTopics] = useState<string[]>([]);
+  
+  const [inferenceStatus, setInferenceStatus] = useState<"healthy" | "degraded" | "checking">("checking");
+  const [inferenceError, setInferenceError] = useState("");
 
   useEffect(() => {
     try {
@@ -38,6 +42,21 @@ export function ExamConfigPanel({ onGenerate, isGenerating }: ExamConfigPanelPro
         if (p.weak_topics) setWeakTopics(p.weak_topics);
       }
     } catch {}
+    
+    // Check inference health
+    getInferenceStatus()
+      .then((res) => {
+        if (res.ollama === "healthy") {
+          setInferenceStatus("healthy");
+        } else {
+          setInferenceStatus("degraded");
+          setInferenceError(res.error || "Inference service unavailable");
+        }
+      })
+      .catch((err) => {
+        setInferenceStatus("degraded");
+        setInferenceError("Could not reach backend to check AI health.");
+      });
   }, []);
 
   // Get topic suggestions based on selected subject
@@ -138,15 +157,30 @@ export function ExamConfigPanel({ onGenerate, isGenerating }: ExamConfigPanelPro
             </div>
           )}
 
+          {inferenceStatus === "degraded" && (
+            <div className="rounded-lg border border-red-500/30 bg-red-500/5 p-3 flex items-start gap-3">
+              <AlertTriangle className="text-red-400 mt-0.5 flex-shrink-0" size={18} />
+              <div>
+                <p className="text-sm font-medium text-red-400">AI Inference Unavailable</p>
+                <p className="text-xs text-red-400/80 mt-1">{inferenceError}</p>
+              </div>
+            </div>
+          )}
+
           <button
             type="submit"
-            disabled={isGenerating || !topic.trim()}
-            className="mt-4 flex w-full items-center justify-center gap-2 rounded-lg bg-amber-500 py-3 font-medium text-black transition-colors hover:bg-amber-400 disabled:opacity-50"
+            disabled={isGenerating || !topic.trim() || inferenceStatus === "degraded" || inferenceStatus === "checking"}
+            className="mt-4 flex w-full items-center justify-center gap-2 rounded-lg bg-amber-500 py-3 font-medium text-black transition-colors hover:bg-amber-400 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {isGenerating ? (
               <>
                 <div className="h-5 w-5 animate-spin rounded-full border-2 border-black border-t-transparent" />
                 Preparing Challenge...
+              </>
+            ) : inferenceStatus === "checking" ? (
+              <>
+                <div className="h-5 w-5 animate-spin rounded-full border-2 border-black border-t-transparent" />
+                Checking AI Health...
               </>
             ) : (
               <>

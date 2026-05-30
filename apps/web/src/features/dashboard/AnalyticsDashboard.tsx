@@ -190,7 +190,7 @@ export function AnalyticsDashboard({ onStartRevision }: { onStartRevision: (topi
                     <Tooltip 
                       contentStyle={{ backgroundColor: '#1a1a1a', border: '1px solid #333', borderRadius: '8px' }}
                       itemStyle={{ color: '#f59e0b' }}
-                      formatter={(val: number) => [`${val}%`, 'Accuracy']}
+                      formatter={(value) => [`${Number(value ?? 0)}%`, 'Accuracy']}
                     />
                   </RadarChart>
                 </ResponsiveContainer>
@@ -230,7 +230,7 @@ export function AnalyticsDashboard({ onStartRevision }: { onStartRevision: (topi
                     <YAxis stroke="#555" tick={{fill: '#777', fontSize: 11}} axisLine={false} tickLine={false} domain={[0, 100]} />
                     <Tooltip 
                       contentStyle={{ backgroundColor: '#1a1a1a', border: '1px solid #333', borderRadius: '8px' }}
-                      formatter={(val: number) => [`${val}%`, 'Score']}
+                      formatter={(value) => [`${Number(value ?? 0)}%`, 'Score']}
                     />
                     <Area type="monotone" dataKey="score" stroke="#3b82f6" strokeWidth={2} fillOpacity={1} fill="url(#colorScore)" />
                   </AreaChart>

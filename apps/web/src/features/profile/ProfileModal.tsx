@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import { X, Save, User } from "lucide-react";
 
 export interface LearnerProfile {
@@ -29,22 +29,19 @@ const AVAILABLE_SUBJECTS = ["Physics", "Math", "Chemistry", "Biology", "Higher M
 const AVAILABLE_BOARDS = ["SSC", "HSC", "Cambridge", "Edexcel"];
 const AVAILABLE_GRADES = ["Class 6", "Class 7", "Class 8", "Class 9", "Class 10", "Class 11", "Class 12"];
 
-export function ProfileModal({ isOpen, onClose, learnerId }: ProfileModalProps) {
-  const [profile, setProfile] = useState<LearnerProfile>(DEFAULT_PROFILE);
+function loadStoredProfile(): LearnerProfile {
+  try {
+    const stored = localStorage.getItem("oneshot_profile");
+    return stored ? { ...DEFAULT_PROFILE, ...JSON.parse(stored) } : DEFAULT_PROFILE;
+  } catch {
+    return DEFAULT_PROFILE;
+  }
+}
+
+export function ProfileModal({ isOpen, onClose }: ProfileModalProps) {
+  const [profile, setProfile] = useState<LearnerProfile>(() => loadStoredProfile());
   const [weakTopicInput, setWeakTopicInput] = useState("");
   const [saved, setSaved] = useState(false);
-
-  // Load from localStorage on open
-  useEffect(() => {
-    if (isOpen) {
-      try {
-        const stored = localStorage.getItem("oneshot_profile");
-        if (stored) {
-          setProfile(JSON.parse(stored));
-        }
-      } catch {}
-    }
-  }, [isOpen]);
 
   const toggleSubject = (s: string) => {
     setProfile((prev) => ({

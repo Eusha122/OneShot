@@ -1,20 +1,14 @@
 import React, { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { ArrowUp, Atom, CheckCircle, ChevronRight, Loader, Menu, Mic, Paperclip, Camera, PenTool, Plus, Search, Settings, Sigma, Upload, X, BarChart2 } from "lucide-react";
+import { ArrowUp, Atom, CheckCircle, ChevronRight, Loader, Menu, Mic, Paperclip, PenTool, Plus, Search, Settings, Sigma, Upload, X, BarChart2 } from "lucide-react";
 import { AssistantMarkdown } from "../features/chat/AssistantMarkdown";
 import { VisualBlockRenderer } from "../features/visual-blocks/VisualBlockRenderer";
 import type { LearningVisualBlock } from "../features/visual-blocks/visualBlockTypes";
-import { getConversation, getConversations, getDocumentStatus, sendChatMessage, uploadDocument, LearningMode, SubjectType, Conversation, createLearnerProfile, createConversation, streamChatMessage, streamExamTransition } from "../lib/chatApi";
+import { API_BASE_URL, createConversation, createLearnerProfile, getConversation, getConversations, getDocumentStatus, streamChatMessage, streamExamTransition, streamImageAssessment, uploadDocument } from "../lib/chatApi";
+import type { Conversation, LearningMode, SubjectType } from "../lib/chatApi";
 import { ProfileModal } from "../features/profile/ProfileModal";
 import { AttachmentMenu } from "../components/chat/AttachmentMenu";
-
-type LearningMode =
-  | "explain_simply"
-  | "exam_mode"
-  | "visual_mode"
-  | "step_by_step"
-  | "fast_revision"
-  | "challenge_me";
+import { useChatStore } from "../store/chatStore";
 
 export interface ActiveDocument {
   id: number;
@@ -48,9 +42,8 @@ export function App() {
   const [activeView, setActiveView] = useState<"chat" | "whiteboard" | "exams" | "dashboard">("chat");
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [selectedMode, setSelectedMode] = useState<LearningMode>("visual_mode");
-  const [selectedSubject, setSelectedSubject] = useState<SubjectType>(() => {
-    return (localStorage.getItem("oneshot_selected_subject") as SubjectType) || "auto";
-  });
+  const selectedSubject = useChatStore((s) => s.selectedSubject) as SubjectType;
+  const setSelectedSubject = useChatStore((s) => s.setSubject);
   const [draft, setDraft] = useState("");
   const [messages, setMessages] = useState<Message[]>([]);
   const [isGenerating, setIsGenerating] = useState(false);
@@ -84,6 +77,7 @@ export function App() {
 
   // Sync when conversation changes
   useEffect(() => {
+    useChatStore.getState().hydrate();
     const stored = localStorage.getItem(`oneshot_docs_${activeConversationId || "new"}`);
     setActiveDocuments(stored ? JSON.parse(stored) : []);
   }, [activeConversationId]);
@@ -93,9 +87,6 @@ export function App() {
     localStorage.setItem(`oneshot_docs_${activeConversationId || "new"}`, JSON.stringify(activeDocuments));
   }, [activeDocuments, activeConversationId]);
   
-  useEffect(() => {
-    localStorage.setItem("oneshot_selected_subject", selectedSubject);
-  }, [selectedSubject]);
 
   // Keep the ref in sync with state
   useEffect(() => {
@@ -264,7 +255,7 @@ export function App() {
     try {
       await streamImageAssessment({
         file,
-        learnerId,
+        learnerId: learnerId ?? undefined,
         onEvent: (event) => {
           if (event.stage === "reading" || event.stage === "identifying" || event.stage === "evaluating" || event.stage === "weak_topics") {
             setActivePipelineStages((prev) => Array.from(new Set([...prev, event.message])));
@@ -517,41 +508,77 @@ export function App() {
             <div className="flex-1 overflow-y-auto">
               <ExamWorkspace 
                 learnerId={learnerId === null ? undefined : learnerId} 
-                onFinishExam={async (score, questions, answers, evaluations) => {
+                onFinishExam={async (score, questions, answers, evaluations, subject) => {
                   setActiveView("chat");
+                  const { setSubject, setExamContext } = useChatStore.getState();
+                  setSubject(subject);
+                  
+                  const request_id = crypto.randomUUID().slice(0, 8);
+                  
+                  // Normalize evaluations
+                  const normalizedEvaluations = questions.reduce((acc, q) => {
+                    if (evaluations[q.id]) {
+                      acc[q.id] = evaluations[q.id];
+                    } else {
+                      acc[q.id] = { correct: false, partial_credit: 0, reason: "Unanswered", skipped: true };
+                    }
+                    return acc;
+                  }, {} as Record<string, any>);
+                  
+                  // Create a snapshot before sending it to the backend or passing it to the result UI
+                  const submissionPayload = {
+                    schema_version: 1,
+                    request_id: request_id,
+                    learner_id: learnerId,
+                    subject: subject,
+                    questions: questions.map(q => ({
+                      question_id: q.id,
+                      question: q.question,
+                      subject: subject,
+                      difficulty: (q as any).difficulty || "medium",
+                      user_answer: answers[q.id] || "",
+                      correct_answer: q.answer,
+                      is_correct: normalizedEvaluations[q.id].correct,
+                      skipped: normalizedEvaluations[q.id].skipped || false
+                    }))
+                  };
+                  
+                  const clonedPayload = structuredClone(submissionPayload);
+                  
+                  if (import.meta.env.DEV) {
+                    console.log(`[EXAM][${request_id}] generated_questions=${questions.length} submitted_answers=${Object.keys(answers).length} score=${score}`);
+                    console.log(`[EXAM][${request_id}] Payload:`, clonedPayload);
+                  }
                   
                   // Submit exam results to analytics backend silently
                   if (learnerId) {
                     try {
-                      await fetch(`http://localhost:8000/api/exams/submit`, {
+                      const res = await fetch(`${API_BASE_URL}/api/exams/submit`, {
                         method: "POST",
                         headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({
-                          learner_id: learnerId,
-                          subject: questions[0]?.type || "unknown subject",
-                          questions: questions.map(q => ({
-                            id: q.id,
-                            chapter: (q as any).chapter || "General",
-                            type: q.type,
-                            correct: evaluations?.[q.id]?.correct || false
-                          }))
-                        })
+                        body: JSON.stringify(clonedPayload)
                       });
+                      
+                      if (res.ok) {
+                        const data = await res.json();
+                        setExamContext({
+                          subject: subject,
+                          score: score,
+                          weakTopics: data.weak_topics || [],
+                          masteryTopics: data.mastery_topics || [],
+                          completedAt: new Date().toISOString()
+                        });
+                      } else {
+                        console.error(`[EXAM][${request_id}] Failed to submit exam, status: ${res.status}`);
+                      }
                     } catch (err) {
-                      console.error("Failed to submit exam analytics", err);
+                      console.error(`[EXAM][${request_id}] Failed to submit exam analytics`, err);
                     }
                   }
 
-                  const examResultsPayload = questions.map(q => ({
-                    id: q.id,
-                    question: q.question,
-                    chapter: (q as any).chapter || "General",
-                    concepts: (q as any).concepts || [],
-                    type: q.type,
-                    student_answer: answers[q.id],
-                    expected_answer: q.answer,
-                    evaluation: evaluations?.[q.id]
-                  }));
+                  if (import.meta.env.DEV) {
+                    console.log("[FRONTEND SUBMIT PAYLOAD]", clonedPayload);
+                  }
 
                   // 1. Setup Chat UI state
                   const assistantMessageId = crypto.randomUUID();
@@ -559,11 +586,9 @@ export function App() {
                   setActivePipelineStages([]);
                   setDraft("");
                   
-                  let newConvId: number | undefined;
                   if (learnerId) {
                     try {
-                      const newConv = await createConversation(learnerId, "Exam Results: " + (questions[0]?.type || "Assessment"));
-                      newConvId = newConv.id;
+                      const newConv = await createConversation(learnerId, "Exam Results: " + subject);
                       skipFetchRef.current = true;
                       setActiveConversationId(newConv.id);
                       setConversationsList(prev => [newConv, ...prev]);
@@ -589,7 +614,8 @@ export function App() {
                     await streamExamTransition({
                       history,
                       learningMode: selectedMode,
-                      examResults: examResultsPayload,
+                      examResults: clonedPayload.questions,
+                      requestId: request_id,
                       onEvent: (event) => {
                         if (event.type === "meta") {
                           const validBlocks = Array.isArray(event.visual_blocks) ? event.visual_blocks.filter(Boolean) : [];
@@ -855,7 +881,7 @@ function Sidebar({
   onSelectConversation: (id: number) => void;
   onNewChat: () => void;
   activeView: string;
-  setActiveView: (view: "chat" | "whiteboard" | "exams") => void;
+  setActiveView: (view: "chat" | "whiteboard" | "exams" | "dashboard") => void;
 }) {
   return (
     <div className="flex h-full flex-col px-3 py-3">
@@ -904,6 +930,7 @@ function Sidebar({
 
       <button
           type="button"
+          aria-label="New chat"
           onClick={onNewChat}
           className="flex h-10 w-full items-center gap-3 rounded-lg px-3 text-sm transition text-[#9ca3af] hover:bg-[#171717] hover:text-[#f5f5f5]"
         >
@@ -959,6 +986,16 @@ function SidebarButton({
 function ConversationWorkspace({ isGenerating, messages, draft, onSelectPrompt }: { isGenerating: boolean; messages: Message[]; draft: string; onSelectPrompt: (p: string) => void }) {
   const showEmptyState = messages.length === 0 && draft.trim().length === 0;
 
+  const memoizedMessages = React.useMemo(() => {
+    return messages.map((message, index) => (
+      <ChatBubble
+        isStreaming={isGenerating && message.role === "assistant" && index === messages.length - 1}
+        key={message.id}
+        message={message}
+      />
+    ));
+  }, [messages, isGenerating]);
+
   return (
     <div className="flex flex-1 flex-col px-4 pt-8 pb-4 sm:px-6 sm:pt-10">
       <AnimatePresence mode="wait">
@@ -971,13 +1008,7 @@ function ConversationWorkspace({ isGenerating, messages, draft, onSelectPrompt }
             animate={{ opacity: 1 }}
             className="mx-auto flex w-full max-w-3xl flex-col gap-6"
           >
-            {messages.map((message, index) => (
-              <ChatBubble
-                isStreaming={isGenerating && message.role === "assistant" && index === messages.length - 1}
-                key={message.id}
-                message={message}
-              />
-            ))}
+            {memoizedMessages}
           </motion.div>
         )}
       </AnimatePresence>
@@ -1143,6 +1174,8 @@ function Composer({
   const imageInputRef = useRef<HTMLInputElement | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [showAttachmentMenu, setShowAttachmentMenu] = useState(false);
+  const latestExamContext = useChatStore((s) => s.latestExamContext);
+  const clearExamContext = useChatStore((s) => s.clearExamContext);
 
   const handleAttachClick = () => {
     fileInputRef.current?.click();
@@ -1262,6 +1295,24 @@ function Composer({
           onDragLeave={handleDragLeave}
           onDrop={handleDrop}
         >
+          {/* Active Context Indicator */}
+          {latestExamContext && (
+            <div className="absolute -top-10 left-4 animate-pulse flex items-center gap-2 rounded-full border border-cyan-500/30 bg-cyan-900/30 px-3 py-1 text-xs font-medium text-cyan-400 shadow-[0_0_15px_rgba(6,182,212,0.2)] backdrop-blur-md">
+              <span className="text-sm">🧪</span>
+              <span className="capitalize">{latestExamContext.subject} Context Active</span>
+              <button 
+                onClick={(e) => {
+                  e.preventDefault();
+                  clearExamContext();
+                }}
+                className="ml-1 rounded-full p-0.5 hover:bg-cyan-500/20 text-cyan-300 transition-colors"
+                title="Clear Context"
+              >
+                <X size={12} />
+              </button>
+            </div>
+          )}
+
           <div className="flex items-end gap-2">
             <input
               ref={fileInputRef}

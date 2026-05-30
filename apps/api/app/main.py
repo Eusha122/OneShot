@@ -21,9 +21,23 @@ from app.db.database import sessionmanager
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     init_storage()
+    
+    # Validate Ollama inference on startup
+    import logging
+    from app.services.ai.ollama_client import ollama_client, InfrastructureError
+    logger = logging.getLogger(__name__)
+    import asyncio
+    try:
+        logger.info("[STARTUP] Validating Ollama inference service...")
+        await asyncio.wait_for(ollama_client.check_health(), timeout=5.0)
+        logger.info("[STARTUP] Ollama inference service is healthy.")
+    except Exception as e:
+        logger.critical(f"[STARTUP] Local AI inference degraded: {e}. Some features will be disabled.")
+        
     yield
     if sessionmanager._engine is not None:
         await sessionmanager.close()
+    await ollama_client.close()
 
 
 def create_app() -> FastAPI:

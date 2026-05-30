@@ -44,36 +44,10 @@ export function PhysicsEngineLab({
   phase?: VisualBlockPhase;
 }) {
   const [params, setParams] = useState<PhysicsLabParams>({ ...defaultPhysicsLabParams, ...initialParams });
-  const [progress, setProgress] = useState(0);
   const [replayId, setReplayId] = useState(0);
   const selectedFormula = params.formulaId ? formulaById(params.formulaId) : undefined;
   const activeFormulas = selectedFormula ? [selectedFormula] : formulasForScenario(params.scenario);
   const isExactFormulaMode = Boolean(selectedFormula);
-
-  useEffect(() => {
-    // Prevent global React state updates for scenes that manage their own internal animation loops.
-    // This fixes a massive performance issue where the PC hangs due to useless 60fps global re-renders.
-    const selfAnimatingScenes = ["kinematics", "force", "waves", "optics", "electricity", "pressure"];
-    if (selfAnimatingScenes.includes(params.scenario)) {
-      return;
-    }
-
-    let frameId = 0;
-    const startedAt = performance.now();
-    const duration = 1800;
-
-    function animate(now: number) {
-      const elapsed = (now - startedAt) / duration;
-      setProgress(Math.min(1, elapsed));
-      if (elapsed < 1) {
-        frameId = requestAnimationFrame(animate);
-      }
-    }
-
-    setProgress(0);
-    frameId = requestAnimationFrame(animate);
-    return () => cancelAnimationFrame(frameId);
-  }, [params, replayId]);
 
   if (params.scenario === "generative" && params.schema) {
     return <SimulationEngine schema={params.schema} />;
@@ -181,7 +155,7 @@ export function PhysicsEngineLab({
         <>
           <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_280px]">
             <div className="overflow-hidden rounded-md border border-[#20242b] bg-[#0d1117]">
-              <PhysicsScene params={params} progress={progress} />
+              <AnimatedPhysicsScene key={`${replayId}-${JSON.stringify(params)}`} params={params} />
             </div>
 
             <aside className="rounded-md border border-[#1f1f1f] bg-[#0d0d0d] p-3">
@@ -216,6 +190,47 @@ export function PhysicsEngineLab({
       )}
     </div>
   );
+}
+
+function AnimatedPhysicsScene({ params }: { params: PhysicsLabParams }) {
+  const [progress, setProgress] = useState(0);
+
+  useEffect(() => {
+    const mediaQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
+    if (mediaQuery.matches) {
+      setProgress(1);
+      return;
+    }
+
+    let frameId = 0;
+    const startedAt = performance.now();
+    const duration = 1800;
+
+    function animate(now: number) {
+      const elapsed = (now - startedAt) / duration;
+      setProgress(Math.min(1, elapsed));
+      if (elapsed < 1) {
+        frameId = requestAnimationFrame(animate);
+      }
+    }
+
+    frameId = requestAnimationFrame(animate);
+    
+    const handleChange = (e: MediaQueryListEvent) => {
+      if (e.matches) {
+        cancelAnimationFrame(frameId);
+        setProgress(1);
+      }
+    };
+    mediaQuery.addEventListener('change', handleChange);
+
+    return () => {
+      cancelAnimationFrame(frameId);
+      mediaQuery.removeEventListener('change', handleChange);
+    };
+  }, []);
+
+  return <PhysicsScene params={params} progress={progress} />;
 }
 
 function PhysicsScene({ params, progress }: { params: PhysicsLabParams; progress: number }) {
@@ -676,5 +691,4 @@ function ReplayButton({ onReplay }: { onReplay: () => void }) {
     </div>
   );
 }
-
 

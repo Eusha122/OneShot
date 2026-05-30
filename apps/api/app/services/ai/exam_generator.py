@@ -1,8 +1,9 @@
 import json
 import logging
 import httpx
+import uuid
 from typing import Optional
-from app.services.ai.ollama_adapter import OllamaAdapter
+from app.services.ai.ollama_client import ollama_client, ValidationError, InfrastructureError, InferenceError
 from app.data.curriculum import get_topic_list_string, get_subject_rules
 
 logger = logging.getLogger(__name__)
@@ -10,7 +11,7 @@ logger = logging.getLogger(__name__)
 
 class ExamGenerator:
     def __init__(self):
-        self.adapter = OllamaAdapter()
+        self.client = ollama_client
 
     async def generate_exam(
         self,
@@ -135,7 +136,7 @@ class ExamGenerator:
         max_retries = 3
         for attempt in range(max_retries):
             try:
-                response_text = await self.adapter.generate(
+                response_text = await self.client.generate(
                     prompt=user_prompt,
                     history=[],
                     system_prompt=system_prompt,
@@ -168,22 +169,29 @@ class ExamGenerator:
                 # Strict Validation
                 if not isinstance(questions, list):
                     logger.error(f"[ExamGenerator] Raw parsed structure: {type(questions)}")
-                    raise ValueError("Root element is not a list and does not contain a list")
-                if len(questions) == 0:
-                    raise ValueError("List is empty")
+                    raise ValidationError("Root element is not a list and does not contain a list")
+                if not questions or len(questions) == 0:
+                    raise ValidationError("No valid questions generated")
 
-                for q in questions:
+                for i, q in enumerate(questions):
+                    if q is None:
+                        raise ValidationError("Null question object detected")
                     if not isinstance(q, dict):
-                        raise ValueError("Question item is not a dictionary")
+                        raise ValidationError("Question item is not a dictionary")
                     required_keys = {"question", "answer"}
                     if not required_keys.issubset(q.keys()):
-                        raise ValueError(f"Missing required keys in question: {q}")
+                        raise ValidationError(f"Missing required keys in question: {q}")
                     if q_type == "mcq" and ("options" not in q or len(q.get("options", [])) < 2):
-                        raise ValueError("MCQ must have at least 2 options")
-                    # Ensure explanation exists
+                        raise ValidationError("MCQ must have at least 2 options")
+                    # Enforce Canonical Schema
+                    if "id" not in q:
+                        q["id"] = f"q_{i}_{uuid.uuid4().hex[:6]}"
+                    if "subject" not in q:
+                        q["subject"] = subject
+                    if "difficulty" not in q:
+                        q["difficulty"] = "medium"
                     if "explanation" not in q:
                         q["explanation"] = ""
-                    # Ensure chapter exists
                     if "chapter" not in q:
                         q["chapter"] = topic if topic.strip().lower() != "full book" else subject
 
@@ -191,12 +199,14 @@ class ExamGenerator:
 
             except json.JSONDecodeError as e:
                 logger.error(f"[ExamGenerator] JSON parsing failed on attempt {attempt+1}: {e}\nResponse: {response_text[:300]}")
-            except httpx.ReadTimeout as e:
-                logger.error(f"[ExamGenerator] LLM Generation timed out on attempt {attempt+1}")
-                if attempt >= 1: # Don't retry more than once on a hard timeout
-                    raise ValueError("Exam generation timed out. The AI model took too long to respond.")
-            except Exception as e:
+            except ValidationError as e:
                 logger.error(f"[ExamGenerator] Validation failed on attempt {attempt+1}: {e}")
+            except InferenceError as e:
+                logger.error(f"[ExamGenerator] Inference failed on attempt {attempt+1}: {e}")
+            except InfrastructureError as e:
+                # Do NOT retry on infrastructure failures like DNS, timeout, connection refused
+                logger.exception("[ExamGenerator] Infrastructure error encountered. Aborting exam generation.")
+                raise  # Let this bubble up to return 503
 
             if attempt == max_retries - 1:
                 logger.error("[ExamGenerator] All retries exhausted. Returning error.")

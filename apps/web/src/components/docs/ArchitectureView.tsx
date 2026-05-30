@@ -26,13 +26,19 @@ graph TD
     OCR --> Vision
     API -->|Save State| SQLite
     
-    style UI fill:#111,stroke:#333,stroke-width:2px,color:#fff
-    style API fill:#111,stroke:#f59e0b,stroke-width:2px,color:#fff
-    style RAG fill:#064e3b,stroke:#059669,stroke-width:2px,color:#fff
-    style LLM fill:#4c1d95,stroke:#8b5cf6,stroke-width:2px,color:#fff
-    style OCR fill:#7f1d1d,stroke:#ef4444,stroke-width:2px,color:#fff
-    style Vision fill:#1e3a8a,stroke:#3b82f6,stroke-width:2px,color:#fff
-    style SQLite fill:#111,stroke:#333,stroke-width:2px,color:#fff
+    classDef default fill:#1a1a1a,stroke:#333,stroke-width:1px,color:#fff,rx:8,ry:8
+    classDef highlight fill:#000,stroke:#f59e0b,stroke-width:1px,color:#fff,rx:8,ry:8
+    classDef db fill:#000,stroke:#10b981,stroke-width:1px,color:#fff,rx:8,ry:8
+    classDef ai fill:#000,stroke:#8b5cf6,stroke-width:1px,color:#fff,rx:8,ry:8
+    classDef vision fill:#000,stroke:#3b82f6,stroke-width:1px,color:#fff,rx:8,ry:8
+    
+    class UI default
+    class API highlight
+    class RAG db
+    class SQLite db
+    class LLM ai
+    class OCR vision
+    class Vision vision
 `;
 
 export default function ArchitectureView() {

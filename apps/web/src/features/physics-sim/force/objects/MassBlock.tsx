@@ -34,7 +34,7 @@ export const MassBlock = forwardRef<MassBlockRef, MassBlockProps>(({ state }, re
       // Calculate visual position
       // s = ut + 0.5 a t^2
       const u = state.velocity! - (state.acceleration || 0) * (state.time || 0);
-      let s = u * currentT + 0.5 * (state.acceleration || 0) * currentT * currentT;
+      const s = u * currentT + 0.5 * (state.acceleration || 0) * currentT * currentT;
       
       const blockX = startX + s * scale;
       

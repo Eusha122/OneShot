@@ -68,6 +68,10 @@ export type ChatStreamEvent =
       label: string;
     }
   | {
+      type: "context";
+      message: string;
+    }
+  | {
       type: "citation";
       chunk_id: string;
       source: string;
@@ -145,6 +149,14 @@ export async function evaluateAnswer(expectedAnswer: string, studentAnswer: stri
   if (!response.ok) {
     const err = await response.json().catch(() => null);
     throw new Error(err?.detail || "Failed to evaluate answer");
+  }
+  return response.json();
+}
+
+export async function getInferenceStatus(): Promise<{ ollama: string; model: string; error?: string }> {
+  const response = await fetch(`${API_BASE_URL}/api/system/inference-status`);
+  if (!response.ok) {
+    throw new Error("Failed to fetch inference status");
   }
   return response.json();
 }
@@ -288,6 +300,7 @@ export function streamChatMessage({
   message,
   conversationId,
   activeDocumentIds,
+  subject,
   onEvent,
 }: {
   history: ChatHistoryMessage[];
@@ -295,6 +308,7 @@ export function streamChatMessage({
   message: string;
   conversationId?: number;
   activeDocumentIds?: number[];
+  subject?: SubjectType;
   onEvent: (event: ChatStreamEvent) => void;
 }): Promise<void> {
   return new Promise((resolve, reject) => {
@@ -310,6 +324,7 @@ export function streamChatMessage({
             message,
             conversation_id: conversationId,
             active_document_ids: activeDocumentIds,
+            subject,
           })
         );
       };
@@ -346,11 +361,13 @@ export async function streamExamTransition({
   history,
   learningMode,
   examResults,
+  requestId,
   onEvent,
 }: {
   history: ChatHistoryMessage[];
   learningMode: LearningMode;
   examResults: any[];
+  requestId?: string;
   onEvent: (event: any) => void;
 }) {
   const response = await fetch(`${API_BASE_URL}/api/chat/exam_transition`, {
@@ -358,6 +375,7 @@ export async function streamExamTransition({
       history,
       learning_mode: learningMode,
       exam_results: examResults,
+      request_id: requestId,
     }),
     headers: {
       "Content-Type": "application/json",
@@ -408,4 +426,3 @@ export async function streamExamTransition({
     throw error;
   }
 }
-
